@@ -1,0 +1,2089 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>체육 수행평가 채점기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: sticky control deck (반 → 평가 → 채점요소) over a roster that is one tap-row per student; detail opens as a bottom sheet. */
+:root{
+  --bg:#F1F4F2; --surface:#FFFFFF; --sunk:#E6ECE9; --ink:#14201B; --muted:#5A6A63; --line:#D5DDD9;
+  --accent:#1E5A96; --accent-soft:#DCE8F5; --accent-ink:#FFFFFF;
+  --good:#23794A; --good-soft:#DDF0E4; --warn:#9A5B00; --warn-soft:#FBEBD2; --bad:#B3261E; --bad-soft:#F9DEDC;
+  --shadow:0 1px 2px rgba(20,32,27,.06),0 8px 24px rgba(20,32,27,.08);
+  --f-display:"Do Hyeon","IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E4ECE8; --muted:#93A39C; --line:#2A3632;
+  --accent:#86B6EA; --accent-soft:#1D3047; --accent-ink:#0E1412;
+  --good:#71CF98; --good-soft:#173324; --warn:#F0B661; --warn-soft:#3A2A10; --bad:#F2918A; --bad-soft:#3D1C1A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E4ECE8; --muted:#93A39C; --line:#2A3632;
+  --accent:#86B6EA; --accent-soft:#1D3047; --accent-ink:#0E1412;
+  --good:#71CF98; --good-soft:#173324; --warn:#F0B661; --warn-soft:#3A2A10; --bad:#F2918A; --bad-soft:#3D1C1A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:0 96px}
+
+/* control deck */
+.deck{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding-block:12px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.topline{display:flex;align-items:center;gap:10px}
+.brand{font-family:var(--f-display);font-size:22px;letter-spacing:.01em;line-height:1;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand small{font-family:var(--f-body);font-size:12px;color:var(--muted);font-weight:500;margin-left:6px}
+.pill{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+button.pill{border:0;cursor:pointer;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
+.pill.busy{background:var(--warn-soft);color:var(--warn)}
+.pill.err{background:var(--bad-soft);color:var(--bad)}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:10px;height:36px;padding:0 12px;font-size:13px;font-weight:600;white-space:nowrap}
+
+.scroller{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.scroller::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:14px;font-weight:600;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip.add{border-style:dashed;color:var(--muted);font-weight:500}
+
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--sunk);border-radius:12px;padding:3px;gap:3px}
+.seg button{border:0;background:transparent;border-radius:9px;padding:7px 8px;font-size:13px;font-weight:600;color:var(--muted);line-height:1.25;min-width:0}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.seg b{display:block;font-size:11px;font-weight:500;letter-spacing:.04em}
+
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;border:0;background:transparent;border-bottom:3px solid transparent;padding:6px 10px 5px;font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tab[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab .mx{font-family:var(--f-num);font-size:11px;margin-left:3px;opacity:.8}
+
+/* rubric card */
+.rubric{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.rubric h2{margin:0;font-size:16px;font-weight:700;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rubric h2 .num{font-size:13px;color:var(--muted);font-weight:500}
+.rubric p{margin:0;color:var(--muted);font-size:13px}
+.rtable{display:flex;flex-wrap:wrap;gap:6px}
+.rrow{display:flex;align-items:center;gap:6px;background:var(--sunk);border-radius:8px;padding:4px 4px 4px 9px;font-size:12.5px}
+.rrow b{font-family:var(--f-num);background:var(--surface);border-radius:6px;padding:1px 7px;font-size:12.5px}
+.rubric .opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted)}
+
+.progress{display:flex;justify-content:space-between;align-items:center;margin:14px 2px 6px;font-size:13px;color:var(--muted);gap:8px;flex-wrap:wrap}
+.bar{height:4px;background:var(--sunk);border-radius:4px;overflow:hidden;flex:1;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+
+/* roster rows */
+.list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:34px minmax(0,1fr) auto 50px;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);min-height:58px}
+.row:first-child{border-top:0}
+.row.absent{background:repeating-linear-gradient(-45deg,transparent 0 8px,var(--sunk) 8px 16px)}
+.row .no{font-family:var(--f-num);color:var(--muted);font-size:14px;text-align:right}
+.who{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:0;background:transparent;text-align:left;padding:0}
+.who .nm{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.who .sub{font-size:11.5px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap}
+.ctl{display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.raw{width:92px;height:42px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:0 10px;text-align:right;font-family:var(--f-num);font-size:17px;font-variant-numeric:tabular-nums}
+.raw:focus{border-color:var(--accent);outline:none;background:var(--surface)}
+.raw.bad{border-color:var(--bad);background:var(--bad-soft)}
+.unit{font-size:12px;color:var(--muted);margin-left:-2px}
+.lv{border:1.5px solid var(--line);background:var(--bg);border-radius:10px;height:42px;min-width:42px;font-family:var(--f-num);font-weight:600;font-size:16px}
+.lv[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mini{border:1px solid var(--line);background:var(--bg);border-radius:7px;font-size:12px;padding:2px 7px;font-weight:600;color:var(--muted)}
+.mini[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mini.need{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.pts{justify-self:end;width:46px;height:42px;border-radius:10px;display:grid;place-items:center;font-family:var(--f-num);font-weight:600;font-size:18px;background:var(--sunk);color:var(--muted)}
+.pts.on{background:var(--accent-soft);color:var(--accent)}
+.pts.full{background:var(--accent);color:var(--accent-ink)}
+.pts.abs{font-family:var(--f-body);font-size:11px;font-weight:700;background:var(--warn-soft);color:var(--warn)}
+
+/* attempt checks (○/×) */
+.row.t{row-gap:8px;padding-block:10px}
+.row.t .tline{grid-column:1 / -1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.vline{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.trials{display:flex;flex-wrap:wrap;gap:6px 10px}
+.tg{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:0}
+.tgl{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.03em}
+.tcells{display:grid;grid-template-columns:repeat(var(--cols),minmax(24px,1fr));gap:4px}
+.tc{height:36px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg);font-family:var(--f-num);font-size:11px;color:var(--muted);padding:0;display:grid;place-items:center}
+.tc.next{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+.tc.s{background:var(--good-soft);border-color:var(--good);color:var(--good);font-size:19px;font-weight:700}
+.tc.f{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-size:19px;font-weight:700}
+.trials.big .tc{height:48px;border-radius:10px;font-size:13px}
+.trials.big .tc.s,.trials.big .tc.f{font-size:24px}
+.qb{height:42px;min-width:42px;border-radius:10px;border:1.5px solid;font-size:20px;font-weight:700;padding:0 10px}
+.qb.s{background:var(--good-soft);border-color:var(--good);color:var(--good)}
+.qb.f{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.qbig{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qbig .qb{height:56px;font-size:18px}
+.tstat{display:flex;gap:14px;font-size:14px;align-items:baseline}
+.tstat b{font-size:18px}
+.ptsrow button:disabled{opacity:.4}
+
+/* top navigation */
+.nav{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;flex:1;min-width:0;background:var(--sunk);border-radius:12px;padding:3px}
+.nav button{border:0;background:transparent;border-radius:9px;padding:8px 4px;font-weight:700;font-size:14px;color:var(--muted);white-space:nowrap}
+.nav button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* tasks */
+.tform{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.tform textarea{min-height:64px;font-family:var(--f-body);font-size:15px}
+.tform .two input,.field input[type=date]{border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:8px 10px;width:100%;min-width:0;font-size:15px}
+.tform .foot{display:flex;justify-content:flex-end}
+.subtabs{display:flex;gap:6px;margin:18px 0 8px}
+.subtabs button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-weight:600;font-size:14px}
+.subtabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.subtabs .num{font-size:12px;margin-left:4px}
+.task{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px;border-top:1px solid var(--line)}
+.task:first-child{border-top:0}
+.task input[type=checkbox]{width:22px;height:22px;margin:2px 0 0;accent-color:var(--good)}
+.task .body{min-width:0;display:flex;flex-direction:column;gap:4px}
+.task .txt{white-space:pre-wrap;word-break:break-word;font-size:15px}
+.task.done .txt{color:var(--muted);text-decoration:line-through}
+.task .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)}
+.dday{font-family:var(--f-num);font-weight:600;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.dday.soon{background:var(--warn-soft);color:var(--warn)}
+.dday.over{background:var(--bad-soft);color:var(--bad)}
+.dday.ok{background:var(--good-soft);color:var(--good)}
+.task .tools{display:flex;gap:4px}
+
+/* subject remarks */
+.rmcards{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.rm{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.rm .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rm .hd .nm{font-weight:700;font-size:16px}
+.rm .hd .no{font-family:var(--f-num);color:var(--muted);font-size:13px;min-width:22px}
+.scores{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.sc{font-size:12px;background:var(--sunk);border-radius:8px;padding:2px 8px;color:var(--muted);white-space:nowrap}
+.sc b{font-family:var(--f-num);color:var(--ink);font-size:13px}
+.rm textarea{min-height:120px;font-family:var(--f-body);font-size:14.5px;line-height:1.7;background:var(--bg)}
+.rm .ft{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rm .ft .cnt{font-size:12px;color:var(--muted);flex:1;min-width:0}
+.rm .ft .cnt.over{color:var(--bad);font-weight:600}
+.rm .ft .cnt.warn{color:var(--warn);font-weight:600}
+.rm textarea.memo{min-height:56px;background:var(--surface);border-style:dashed}
+.rm .field label{font-size:12px;color:var(--muted)}
+.memost{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.memost .hint{font-size:12px;color:var(--muted)}
+.memost .hint.ai{color:var(--accent);font-weight:600}
+.memost .hint.busy{color:var(--warn)}
+.memost .hint.err{color:var(--bad);font-weight:600}
+.rm .ft .btn{padding:8px 12px;font-size:13px}
+.tag{font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--warn-soft);color:var(--warn)}
+.note-box{margin-top:14px;font-size:12.5px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+
+/* summary table */
+.tblwrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--sunk);position:sticky;top:0}
+td.l,th.l{text-align:left}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--sunk)}
+tbody tr:last-child td{border-bottom:0}
+td .dash{color:var(--line)}
+.grade{display:inline-block;min-width:26px;border-radius:6px;padding:1px 6px;font-weight:700;font-family:var(--f-num)}
+.grade.A{background:var(--good-soft);color:var(--good)}
+.grade.B{background:var(--accent-soft);color:var(--accent)}
+.grade.C{background:var(--warn-soft);color:var(--warn)}
+.tot{font-weight:700}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 16px;font-weight:600;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.ghost{background:transparent}
+
+/* empty */
+.empty{margin-top:28px;background:var(--surface);border:1px dashed var(--line);border-radius:16px;padding:28px 20px;display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.empty h2{font-family:var(--f-display);font-weight:400;font-size:26px;margin:0;line-height:1.2;text-wrap:balance}
+.empty p{margin:0;color:var(--muted);max-width:60ch}
+.empty ol{margin:0;padding-left:20px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,16,14,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:92%;border-radius:20px 20px 0 0;display:flex;flex-direction:column;box-shadow:var(--shadow);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (min-width:700px){.scrim{align-items:center}.sheet{border-radius:20px;max-height:88%}}
+.sh-head{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.sh-head h3{margin:0;font-size:18px;flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.sh-head h3 .num{color:var(--muted);font-size:14px}
+.sh-body{overflow-y:auto;padding:14px 16px 18px;display:flex;flex-direction:column;gap:14px}
+.sh-foot{display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--line);align-items:center}
+.sh-foot .sp{flex:1}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.card .ttl{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .ttl strong{font-size:15px}
+.card .ttl .note{font-size:12px;color:var(--muted)}
+.grid-btn{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px}
+.grid-btn button{height:46px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);font-family:var(--f-num);font-size:17px;font-weight:600}
+.grid-btn button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ptsrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ptsrow .lab{font-size:12px;color:var(--muted);margin-right:2px}
+.ptsrow button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 10px;font-family:var(--f-num);font-weight:600;font-size:14px}
+.ptsrow button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.bigtotal{display:flex;align-items:baseline;gap:6px;font-family:var(--f-num);font-weight:600}
+.bigtotal b{font-size:28px}
+.bigtotal span{color:var(--muted);font-size:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:600}
+.field .hint{font-size:12px;color:var(--muted)}
+textarea,select,.txt{border:1.5px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 12px;font-size:15px;width:100%}
+textarea{min-height:180px;font-family:var(--f-num);font-size:14px;line-height:1.55;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.preview{font-size:13px;color:var(--muted)}
+.preview b{color:var(--ink)}
+.toggle{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600}
+.toggle input{width:20px;height:20px;accent-color:var(--warn)}
+.copybox{font-family:var(--f-num);font-size:12px;min-height:120px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:14px;z-index:80;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.muted{color:var(--muted)}
+.sec-title{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:4px 2px -4px}
+@media (max-width:420px){
+  .row{grid-template-columns:26px minmax(0,1fr) auto 44px;gap:8px;padding:8px 10px}
+  .raw{width:78px}
+  .pts{width:42px}
+  .lv{min-width:38px}
+}
+@media (prefers-reduced-motion:no-preference){.pts,.lv,.chip{transition:background-color .15s,color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="deck" id="deck"></header>
+  <main id="main"></main>
+</div>
+<div id="layer"></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ───────── 평가 기준 (2026학년도 2학기 체육과 평가운영 계획) ───────── */
+const atLeast = (list, floor) => r => { for (const [t, p] of list) if (r >= t) return p; return floor; };
+const atMost  = (list, floor) => r => { r = Math.round(r * 100) / 100; for (const [t, p] of list) if (r <= t) return p; return floor; };
+
+const UND10 = {
+  id: "und", name: "체력 증진·관리·운동처방 이해", short: "이해", max: 10, kind: "num", unit: "점", rawMax: 10, buttons: true,
+  desc: "내용 이해 평가(10점 만점) 득점을 입력하세요.",
+  rule: atLeast([[9, 10], [7, 7]], 4),
+  table: () => [["9점 이상", 10], ["7~8점", 7], ["6점 이하", 4]],
+};
+const discThrow = (id, name) => ({
+  id, name, short: name, max: 17, kind: "num", unit: "개", rawMax: 6, buttons: true, trials: 6,
+  groups: ctx => (ctx.sex === "여" ? ["5m", "6m", "7m"] : ctx.sex === "남" ? ["6m", "7m", "8m"] : ["1거리", "2거리", "3거리"]).map(label => ({ label, n: 2 })),
+  desc: "거리별 2번씩 총 6번 — 넣으면 ○, 못 넣으면 × (남 6·7·8m / 여 5·6·7m)",
+  rule: atLeast([[5, 17], [4, 14], [3, 11], [2, 8]], 5),
+  table: () => [["5개 이상", 17], ["4개", 14], ["3개", 11], ["2개", 8], ["1개 이하", 5]],
+});
+
+const EVALS = {
+  1: [
+    { id: "g1a", tag: "수행1", name: "체력운동과 레이저 사격", max: 50, base: 16, items: [
+      UND10,
+      { id: "zero", name: "영점 사격", short: "영점", max: 17, kind: "num", unit: "초", decimal: true, time: true,
+        desc: "흑점 5번을 맞추는 데 걸린 시간 (양손·한손 중 선택 자세)",
+        rule: atMost([[28, 17], [31, 14], [34, 11], [37, 8]], 5),
+        table: () => [["28.00초 이하", 17], ["28.01~31.00초", 14], ["31.01~34.00초", 11], ["34.01~37.00초", 8], ["37.01초 이상", 5]] },
+      { id: "rec", name: "기록 사격", short: "기록", max: 17, kind: "num", unit: "점",
+        desc: "기록 사격 점수 (양손·한손 중 선택 자세)",
+        rule: atLeast([[75, 17], [71, 14], [67, 11], [63, 8]], 5),
+        table: () => [["75점 이상", 17], ["71~74점", 14], ["67~70점", 11], ["63~66점", 8], ["62점 이하", 5]] },
+      { id: "att", name: "수업 참여 태도", short: "태도", max: 6, kind: "level",
+        desc: "스포츠의 연습과 경기 과정에서 인내심과 도전",
+        levels: [[6, "꾸준히 인내하며 적극 도전"], [4, "인내심을 갖고 적극 도전"], [2, "참여하려고 노력"]] },
+    ]},
+    { id: "g1b", tag: "수행2", name: "생활환경형 스포츠 · 플라잉디스크", max: 50, base: 16, items: [
+      { ...UND10, name: "플라잉디스크 역사·특성 이해" },
+      discThrow("fore", "포핸드"),
+      discThrow("back", "백핸드"),
+      { id: "att", name: "수업 참여 태도", short: "태도", max: 6, kind: "level",
+        desc: "스포츠 환경 친화적 태도와 공동체 의식",
+        levels: [[6, "공동체 의식 적극 발휘"], [4, "공동체 의식 발휘"], [2, "발휘하려고 노력"]] },
+    ]},
+  ],
+  2: [
+    { id: "g2a", tag: "수행1", name: "신체건강활동 · 플레이트야구", max: 60, base: 15, items: [
+      { id: "und", name: "플레이트야구 이해력", short: "이해", max: 20, kind: "num", unit: "점", rawMax: 20,
+        desc: "경기 규칙 및 전략 이해력 평가(20점 만점) 득점",
+        rule: atLeast([[20, 20], [17, 17], [14, 14], [10, 11], [6, 8]], 5),
+        table: () => [["20점", 20], ["17~19점", 17], ["14~16점", 14], ["10~13점", 11], ["6~9점", 8], ["5점 이하", 5]] },
+      { id: "hit", name: "타격의 정확성", short: "타격", max: 20, kind: "num", unit: "회", rawMax: 10, buttons: true, trials: 10,
+        variants: [
+          { id: "racket", label: "라켓", desc: "테니스 라켓 10회 — 공을 바운드시키지 않고 목표물을 넘기면 ○",
+            rule: atLeast([[8, 20], [7, 17], [6, 14], [5, 11], [4, 8]], 5),
+            table: [["8회 이상", 20], ["7회", 17], ["6회", 14], ["5회", 11], ["4회", 8], ["3회 이하", 5]] },
+          { id: "bat", label: "배트", desc: "야구 배트 10회 — 타격한 공이 목표 구역에 도달하면 ○",
+            rule: atLeast([[5, 20], [4, 17], [3, 14], [2, 11], [1, 8]], 5),
+            table: [["5회 이상", 20], ["4회", 17], ["3회", 14], ["2회", 11], ["1회", 8], ["0회", 5]] },
+        ] },
+      { id: "skill", name: "야구기능 종합평가", short: "종합", max: 20, kind: "num", unit: "초", decimal: true, time: true, bySex: true,
+        desc: "기록 시간 — 52.3 또는 1:04.5 처럼 입력",
+        rule: (r, ctx) => ctx.sex === "여"
+          ? atMost([[60, 20], [65, 17], [70, 14], [75, 11], [80, 8]], 5)(r)
+          : atMost([[45, 20], [50, 17], [55, 14], [65, 11], [75, 8]], 5)(r),
+        table: ctx => ctx.sex === "여"
+          ? [["1:00 이내", 20], ["1:00.01~1:05", 17], ["1:05.01~1:10", 14], ["1:10.01~1:15", 11], ["1:15.01~1:20", 8], ["1:20.01 이상", 5]]
+          : [["45초 이내", 20], ["45.01~50초", 17], ["50.01~55초", 14], ["55.01~65초", 11], ["65.01~75초", 8], ["75.01초 이상", 5]] },
+    ]},
+    { id: "g2b", tag: "수행2", name: "네트형 스포츠 · 탁구", max: 40, base: 10, items: [
+      { id: "serve", name: "서브의 정확성", short: "서브", max: 20, kind: "num", unit: "개", rawMax: 9, buttons: true, trials: 9,
+        desc: "서브 9개 — 목표 구역에 들어가면 ○, 아니면 ×",
+        rule: atLeast([[8, 20], [7, 17], [6, 14], [5, 11], [4, 8]], 5),
+        table: () => [["8개 이상", 20], ["7개", 17], ["6개", 14], ["5개", 11], ["4개", 8], ["3개 이하", 5]] },
+      { id: "stroke", name: "스트로크의 정확성", short: "스트로크", max: 20, kind: "num", unit: "개", rawMax: 20, trials: 20,
+        desc: "포핸드·백핸드 20개 — 목표 구역에 들어가면 ○, 아니면 ×",
+        rule: atLeast([[16, 20], [13, 17], [10, 14], [7, 11], [4, 8]], 5),
+        table: () => [["16개 이상", 20], ["13~15개", 17], ["10~12개", 14], ["7~9개", 11], ["4~6개", 8], ["3개 이하", 5]] },
+    ]},
+  ],
+};
+const GRADE_CUT = [[80, "A"], [60, "B"]];
+
+function itemOptions(item) {
+  if (item.kind === "level") return item.levels.map(l => l[0]);
+  if (item.variants) return [...new Set(item.variants.flatMap(v => v.table.map(t => t[1])))].sort((a, b) => b - a);
+  return [...new Set(item.table({ sex: "남" }).concat(item.table({ sex: "여" })).map(t => t[1]))].sort((a, b) => b - a);
+}
+
+/* ───────── 상태 ───────── */
+const S = {
+  loading: true, mode: "local", classes: {}, tasks: { items: [] },
+  ui: { page: "eval", cls: null, ev: {}, item: {}, variant: {}, ttab: "open" },
+  saving: 0, saveErr: null, dirty: new Set(), sheet: null,
+};
+const TASKS = "tasks";
+const LS_DATA = "pe-grader-data-v1", LS_UI = "pe-grader-ui-v1", LS_TASKS = "pe-grader-tasks-v1";
+const ls = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+Object.assign(S.ui, ls.get(LS_UI) || {});
+const saveUI = () => ls.set(LS_UI, S.ui);
+
+const rid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = s => document.querySelector(s);
+
+/* ───────── 저장소: 클라우드(db) 우선, 없으면 이 기기 ───────── */
+let db = null, uid = null, coll = null;
+const timers = {}, chains = {}, goneNames = {};
+
+/* 구글 시트 모드: GitHub Pages 등 claude.ai 밖에서 열었을 때, Apps Script 웹 앱 API(주소 + 비밀 키)로 저장 */
+const LS_API = "pe-grader-api-v1";
+const apiCfg = () => { const c = ls.get(LS_API); return c && c.url && c.key ? c : null; };
+const inClaude = () => !!(window.claude && typeof window.claude.use === "function");
+async function apiCall(action, payload, cfg) {
+  cfg = cfg || apiCfg();
+  if (!cfg) throw new Error("구글 시트가 연결되지 않았어요.");
+  let res;
+  try {
+    // text/plain으로 보내야 브라우저 사전 요청(CORS preflight) 없이 Apps Script에 닿음
+    res = await fetch(cfg.url, { method: "POST", body: JSON.stringify({ key: cfg.key, action, ...(payload || {}) }) });
+  } catch { throw new Error("구글 시트 서버에 연결하지 못했어요. 인터넷 연결과 웹 앱 주소를 확인하세요."); }
+  let out; try { out = await res.json(); } catch { throw new Error("웹 앱 응답을 읽지 못했어요. 배포 시 액세스 권한이 ‘모든 사용자’인지 확인하세요."); }
+  if (!out.ok) throw new Error(out.error === "unauthorized" ? "비밀 키가 맞지 않아요." : (out.error || "저장 서버 오류"));
+  return out.data;
+}
+async function sheetLoad() {
+  const docs = await apiCall("loadAll");
+  const next = {}; let tasks = null;
+  for (const d of docs || []) {
+    let body; try { body = JSON.parse(d.json); } catch { continue; }
+    if (d.id === TASKS) tasks = body; else if (body && body.grade) next[d.id] = body;
+  }
+  for (const id of Object.keys(next)) if (!S.dirty.has(id)) S.classes[id] = next[id];
+  for (const id of Object.keys(S.classes)) if (!next[id] && !S.dirty.has(id)) delete S.classes[id];
+  if (tasks && !S.dirty.has(TASKS)) S.tasks = { items: [], ...tasks };
+}
+// 시트에서 사람이 보기 좋은 표 (반별 점수와 세특, 업무 목록)
+function sheetView(id) {
+  if (id === TASKS) {
+    const rows = (S.tasks.items || []).map(t => [t.date || "", t.due || "", t.text, t.done ? "완료" : "진행중", t.doneAt ? new Date(t.doneAt).toLocaleDateString("ko-KR") : ""]);
+    return { name: "업무관리", rows: [["업무일자", "마감기한", "업무내용", "상태", "완료일"], ...rows] };
+  }
+  const c = S.classes[id]; if (!c) return null;
+  ensureRemarks(c);
+  const [h, rows] = tableRows(c);
+  return { name: c.name, rows: [[...h, "관찰 메모", "교과세특"], ...rows.map((r, i) => { const st = c.students[i]; const rm = remarkOf(c, st); return [...r, rm.memo, rm.text]; })] };
+}
+
+async function initStore() {
+  if (!inClaude() && apiCfg()) {
+    S.mode = "sheet";
+    try { await sheetLoad(); }
+    catch (e) { S.saveErr = e.message || "구글 시트에서 불러오지 못했어요."; }
+    S.loading = false; render();
+    return;
+  }
+  try {
+    if (window.claude && typeof window.claude.use === "function") {
+      const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      const id = u ? await u.id() : null;
+      if (d && id) { db = d; uid = id; }
+    }
+  } catch { db = null; }
+
+  if (db) {
+    S.mode = "cloud";
+    coll = db.collection("data/users/" + uid);
+    coll.onSnapshot(snap => {
+      const next = {};
+      let nextTasks = null;
+      snap.docs.forEach(d => {
+        if (!d.exists) return;
+        const body = JSON.parse(JSON.stringify(d.data()));
+        if (d.id === TASKS) nextTasks = body; else if (body && body.grade) next[d.id] = body;
+      });
+      let changed = S.loading;
+      if (nextTasks && !S.dirty.has(TASKS) && JSON.stringify(S.tasks) !== JSON.stringify(nextTasks)) { S.tasks = { items: [], ...nextTasks }; changed = true; }
+      for (const id of Object.keys(next)) {
+        if (S.dirty.has(id)) continue;
+        if (JSON.stringify(S.classes[id]) !== JSON.stringify(next[id])) { S.classes[id] = next[id]; changed = true; }
+      }
+      for (const id of Object.keys(S.classes)) if (!next[id] && !S.dirty.has(id) && !snap.metadata.hasPendingWrites) { delete S.classes[id]; changed = true; }
+      S.loading = false;
+      if (changed) render();
+    }, () => { S.saveErr = "연결이 끊겼어요. 새로고침해 주세요."; render(); });
+  } else {
+    S.mode = "local";
+    S.classes = ls.get(LS_DATA) || {};
+    S.tasks = ls.get(LS_TASKS) || { items: [] };
+    S.loading = false;
+    render();
+  }
+}
+
+function persist(id) {
+  if (S.mode === "local") {
+    if (!ls.set(LS_DATA, S.classes) || !ls.set(LS_TASKS, S.tasks)) S.saveErr = "이 기기에 저장하지 못했어요.";
+    paintStatus(); return;
+  }
+  S.dirty.add(id);
+  clearTimeout(timers[id]);
+  timers[id] = setTimeout(() => flush(id), S.mode === "sheet" ? 1500 : 500);
+  paintStatus();
+}
+function flush(id) {
+  const body = id === TASKS ? S.tasks : S.classes[id];
+  S.saving++; paintStatus();
+  chains[id] = (chains[id] || Promise.resolve()).then(async () => {
+    try {
+      if (S.mode === "sheet") {
+        if (body) { const view = sheetView(id); await apiCall("saveDoc", { id, json: JSON.stringify(body), view }); }
+        else await apiCall("deleteDoc", { id, viewName: goneNames[id] || "" });
+      } else if (body) await coll.doc(id).set(JSON.parse(JSON.stringify(body)));
+      else await coll.doc(id).delete();
+      S.saveErr = null;
+    } catch (e) {
+      S.saveErr = S.mode === "sheet" ? (e && e.message) || "구글 시트에 저장하지 못했어요." : e && e.code === "quota_exceeded" ? "저장 공간이 가득 찼어요." : "저장하지 못했어요. 다시 시도해 주세요.";
+    } finally {
+      S.saving--;
+      if (!timers[id] || S.saving === 0) S.dirty.delete(id);
+      paintStatus();
+    }
+  });
+  timers[id] = null;
+}
+function removeClass(id) {
+  if (S.classes[id]) goneNames[id] = S.classes[id].name;
+  delete S.classes[id];
+  if (S.mode === "local") persist(id);
+  else { S.dirty.add(id); flush(id); }
+}
+
+/* ───────── 계산 ───────── */
+const cls = () => S.classes[S.ui.cls];
+const evalsOf = c => EVALS[c.grade] || [];
+const curEval = c => { const list = evalsOf(c); return list.find(e => e.id === S.ui.ev[c.grade]) || list[0]; };
+const varOf = (item, entry) => item.variants ? item.variants.find(v => v.id === (entry && entry.v)) || item.variants.find(v => v.id === S.ui.variant[item.id]) || item.variants[0] : null;
+
+function entryOf(c, sid, ev) { return (((c.scores || {})[sid] || {})[ev.id]) || null; }
+function trialStat(item, e) {
+  const n = item.trials;
+  const marks = Array.from({ length: n }, (_, i) => (e && Array.isArray(e.marks) && (e.marks[i] === 0 || e.marks[i] === 1)) ? e.marks[i] : null);
+  const succ = marks.filter(x => x === 1).length, fail = marks.filter(x => x === 0).length;
+  return { n, marks, succ, fail, filled: succ + fail, done: succ + fail === n };
+}
+function itemPts(item, entry, stu) {
+  const e = entry && entry.items && entry.items[item.id];
+  if (!e) return null;
+  if (e.pts != null && (e.manual || item.kind === "level")) return e.pts;
+  let raw = e.raw;
+  if (item.trials && Array.isArray(e.marks)) { const t = trialStat(item, e); raw = t.done ? t.succ : null; }
+  if (raw == null) return null;
+  if (item.bySex && !stu.sex) return null;
+  if (item.variants) return varOf(item, e).rule(raw);
+  return item.rule(raw, { sex: stu.sex });
+}
+function trialsHTML(item, e, stu, big) {
+  const t = trialStat(item, e);
+  const groups = item.groups ? item.groups({ sex: stu.sex }) : [{ label: "", n: t.n }];
+  const next = t.marks.indexOf(null);
+  let k = 0;
+  return `<div class="trials${big ? " big" : ""}">` + groups.map(g => {
+    const cols = Math.min(g.n, 10);
+    let cells = "";
+    for (let j = 0; j < g.n; j++, k++) {
+      const m = t.marks[k];
+      const cl = m === 1 ? "tc s" : m === 0 ? "tc f" : k === next ? "tc next" : "tc";
+      const lab = m === 1 ? "○" : m === 0 ? "×" : k + 1;
+      cells += `<button class="${cl}" data-act="mk" data-sid="${stu.id}" data-item="${item.id}" data-k="${k}" aria-label="${k + 1}번째 ${m === 1 ? "성공" : m === 0 ? "실패" : "미기록"}">${lab}</button>`;
+    }
+    return `<div class="tg">${g.label ? `<span class="tgl">${esc(g.label)}</span>` : ""}<div class="tcells" style="--cols:${cols}">${cells}</div></div>`;
+  }).join("") + `</div>`;
+}
+function trialSub(item, e) {
+  const t = trialStat(item, e);
+  if (!t.filled) return e && e.raw != null && !e.marks ? `숫자 기록 ${e.raw}${item.unit}` : "";
+  return `○ ${t.succ} · × ${t.fail}${t.done ? "" : ` · 남은 ${t.n - t.filled}`}`;
+}
+function evalTotal(c, stu, ev) {
+  const en = entryOf(c, stu.id, ev);
+  if (en && en.absent) return { total: ev.base - 1, done: true, absent: true, n: ev.items.length };
+  let total = 0, n = 0;
+  for (const it of ev.items) { const p = itemPts(it, en, stu); if (p != null) { total += p; n++; } }
+  return { total, n, done: n === ev.items.length, absent: false };
+}
+function semester(c, stu) {
+  const parts = evalsOf(c).map(ev => evalTotal(c, stu, ev));
+  if (!parts.every(p => p.done)) return null;
+  const total = parts.reduce((a, p) => a + p.total, 0);
+  const grade = (GRADE_CUT.find(([cut]) => total >= cut) || [0, "C"])[1];
+  return { total, grade };
+}
+function parseRaw(item, str) {
+  str = String(str).trim().replace(/\s+/g, "");
+  if (!str) return { empty: true };
+  let v;
+  if (item.time) {
+    let m = str.match(/^(\d+)[:분'](\d+(?:\.\d+)?)초?"?$/);
+    if (m) v = +m[1] * 60 + +m[2];
+    else { m = str.match(/^(\d+(?:\.\d+)?)초?$/); if (m) v = +m[1]; }
+  } else if (/^\d+(\.\d+)?$/.test(str)) v = +str;
+  if (v == null || !isFinite(v)) return { err: "숫자를 입력하세요" };
+  if (!item.decimal && !Number.isInteger(v)) return { err: "정수로 입력하세요" };
+  if (item.rawMax != null && v > item.rawMax) return { err: `최대 ${item.rawMax}${item.unit}` };
+  return { v };
+}
+const fmtRaw = (item, raw) => {
+  if (raw == null) return "";
+  if (item.time && raw >= 60 && item.bySex) { const m = Math.floor(raw / 60), s = +(raw - m * 60).toFixed(2); return `${m}:${s < 10 ? "0" : ""}${s}`; }
+  return String(raw);
+};
+
+function setItem(c, sid, ev, itemId, patch) {
+  c.scores = c.scores || {};
+  const s = c.scores[sid] = c.scores[sid] || {};
+  const en = s[ev.id] = s[ev.id] || { items: {} };
+  en.items = en.items || {};
+  if (patch === null) delete en.items[itemId];
+  else en.items[itemId] = patch;
+  c.updated = Date.now();
+  persist(c.id);
+}
+function setAbsent(c, sid, ev, on) {
+  c.scores = c.scores || {};
+  const s = c.scores[sid] = c.scores[sid] || {};
+  const en = s[ev.id] = s[ev.id] || { items: {} };
+  if (on) en.absent = true; else delete en.absent;
+  persist(c.id);
+}
+
+/* ───────── 그리기 ───────── */
+function paintStatus() {
+  const el = $("#status"); if (!el) return;
+  let cls_ = "pill", txt;
+  if (S.saveErr) { cls_ += " err"; txt = S.saveErr; }
+  else if (S.mode === "local") { txt = inClaude() ? "이 기기에만 저장" : "이 기기에만 저장 · 시트 연결"; }
+  else if (S.saving || S.dirty.size) { cls_ += " busy"; txt = "저장 중…"; }
+  else { cls_ += " ok"; txt = S.mode === "sheet" ? "시트에 저장됨" : "저장됨"; }
+  el.className = cls_; el.textContent = txt;
+}
+
+function sortedClasses() {
+  return Object.values(S.classes).sort((a, b) => a.grade - b.grade || a.num - b.num || String(a.name).localeCompare(b.name));
+}
+
+function render() {
+  const keep = document.activeElement && document.activeElement.id;
+  const caret = keep && document.activeElement.selectionStart;
+  const ae = document.activeElement;
+  const typed = keep && (ae.tagName === "TEXTAREA" || (ae.tagName === "INPUT" && ae.type !== "checkbox" && ae.type !== "file")) ? ae.value : null;
+  renderDeck(); renderMain(); renderLayer(); paintStatus();
+  if (keep) { const el = document.getElementById(keep); if (el) { if (typed != null) el.value = typed; el.focus({ preventScroll: true }); try { if (caret != null) el.setSelectionRange(caret, caret); } catch {} } }
+}
+
+function renderDeck() {
+  const list = sortedClasses();
+  if (!S.classes[S.ui.cls] && list.length) S.ui.cls = list[0].id;
+  const c = cls();
+  const page = S.ui.page || "eval";
+  const pages = [["tasks", "업무관리"], ["eval", "수행평가"], ["remarks", "교과세특"]];
+  let h = `<h1 class="sr">체육 업무 도우미</h1><div class="topline"><nav class="nav" aria-label="메뉴">${pages.map(([id, l]) => `<button data-act="page" data-id="${id}" aria-pressed="${page === id}">${l}</button>`).join("")}</nav>${inClaude() ? `<span id="status" class="pill"></span>` : `<button id="status" class="pill" data-act="conn" title="구글 시트 연결 설정"></button>`}</div>`;
+  if (page === "tasks") { $("#deck").innerHTML = h; return; }
+  if (page === "remarks") {
+    if (list.length) h += `<div class="scroller" role="toolbar" aria-label="반 선택">` + list.map(k => `<button class="chip" data-act="cls" data-id="${k.id}" aria-pressed="${k.id === S.ui.cls}">${esc(k.name)}</button>`).join("") + `</div>`;
+    $("#deck").innerHTML = h; return;
+  }
+  if (list.length) {
+    h += `<div class="scroller" role="toolbar" aria-label="반 선택">` +
+      list.map(k => `<button class="chip" data-act="cls" data-id="${k.id}" aria-pressed="${k.id === S.ui.cls}">${esc(k.name)}</button>`).join("") +
+      `<button class="chip add" data-act="add">+ 반 추가</button>${c ? `<button class="chip add" data-act="manage">반 관리</button>` : ""}</div>`;
+  }
+  if (c) {
+    const ev = curEval(c);
+    h += `<div class="seg">` + evalsOf(c).map(e =>
+      `<button data-act="ev" data-id="${e.id}" aria-pressed="${e.id === ev.id}"><b>${e.tag} · ${e.max}점</b>${esc(e.name)}</button>`).join("") + `</div>`;
+    const cur = S.ui.item[ev.id] || "sum";
+    h += `<div class="tabs" role="toolbar" aria-label="채점 요소">` +
+      `<button class="tab" data-act="item" data-id="sum" aria-pressed="${cur === "sum"}">결과표</button>` +
+      ev.items.map(it => `<button class="tab" data-act="item" data-id="${it.id}" aria-pressed="${cur === it.id}">${esc(it.short)}<span class="mx">${it.max}</span></button>`).join("") +
+      `</div>`;
+  }
+  $("#deck").innerHTML = h;
+}
+
+function renderMain() {
+  const m = $("#main");
+  if (S.loading) { m.innerHTML = `<div class="empty"><h2>불러오는 중…</h2><p>저장된 업무와 반, 점수를 가져오고 있어요.</p></div>`; return; }
+  if (S.ui.page === "tasks") { m.innerHTML = tasksView(); return; }
+  const c = cls();
+  if (S.ui.page === "remarks") {
+    m.innerHTML = c ? remarksView(c) : `<section class="empty"><h2>먼저 수행평가에서 반을 만들어 주세요</h2><p>명렬표와 수행평가 점수가 있으면 학생마다 세특 문장이 자동으로 만들어져요.</p><div class="actions"><button class="btn primary" data-act="page" data-id="eval">수행평가로 가기</button></div></section>`;
+    return;
+  }
+  if (!c) {
+    m.innerHTML = `<section class="empty">
+      <h2>명렬표를 넣으면 평가표가 바로 만들어져요</h2>
+      <p>1학년은 레이저 사격·플라잉디스크, 2학년은 플레이트야구·탁구 채점 기준이 들어 있어요. 기록(초, 개수, 점수)만 입력하면 평가계획서의 배점으로 바뀝니다.</p>
+      <ol><li>반 추가 → 학년과 반 선택</li><li>엑셀 명렬표를 복사해 붙여넣기 (번호·이름·성별)</li><li>채점 요소를 고르고 학생별로 기록 입력</li></ol>
+      <div class="actions"><button class="btn primary" data-act="add">반 추가</button><button class="btn" data-act="sample">예시 반 만들어 보기</button></div>
+    </section>`;
+    return;
+  }
+  const ev = curEval(c);
+  const cur = S.ui.item[ev.id] || "sum";
+  const item = ev.items.find(i => i.id === cur);
+  m.innerHTML = item ? itemView(c, ev, item) : sumView(c, ev);
+}
+
+function rubricHTML(item, ctx) {
+  if (item.kind === "level") return item.levels.map(([p, l]) => `<span class="rrow">${esc(l)}<b>${p}</b></span>`).join("");
+  const rows = item.variants ? varOf(item, null).table : item.table(ctx);
+  return rows.map(([l, p]) => `<span class="rrow">${esc(l)}<b>${p}</b></span>`).join("");
+}
+
+function itemView(c, ev, item) {
+  const studs = c.students || [];
+  let done = 0;
+  const rows = studs.map(st => {
+    const en = entryOf(c, st.id, ev);
+    const e = en && en.items && en.items[item.id];
+    const p = itemPts(item, en, st);
+    if (en && en.absent) done++; else if (p != null) done++;
+    return rowHTML(c, ev, item, st, en, e, p);
+  }).join("");
+  const v = item.variants ? varOf(item, null) : null;
+  let opts = "";
+  if (item.variants) opts = `<div class="opts">기본 도구 ${item.variants.map(x => `<button class="mini" data-act="defvar" data-item="${item.id}" data-v="${x.id}" aria-pressed="${x.id === v.id}">${x.label}</button>`).join("")}<span>· 학생마다 바꿀 수 있어요</span></div>`;
+  let tables = "";
+  if (item.bySex) tables = `<div class="opts"><b>남</b></div><div class="rtable">${rubricHTML(item, { sex: "남" })}</div><div class="opts"><b>여</b></div><div class="rtable">${rubricHTML(item, { sex: "여" })}</div>`;
+  else tables = `<div class="rtable">${rubricHTML(item, {})}</div>`;
+  const pct = studs.length ? Math.round(done / studs.length * 100) : 0;
+  return `<section class="rubric" aria-label="채점 기준">
+      <h2>${esc(item.name)} <span class="num">${item.max}점</span></h2>
+      <p>${esc(v ? v.desc : item.desc)}</p>${opts}${tables}
+    </section>
+    <div class="progress"><span>입력 <b class="num">${done}</b> / <span class="num">${studs.length}</span>명</span><div class="bar"><i style="width:${pct}%"></i></div>
+      <span>${item.trials ? "○/× 버튼은 다음 칸부터 채워요 · 칸을 누르면 ○→×→빈칸" : item.kind === "num" ? "입력 후 Enter → 다음 학생" : "점수를 누르면 저장"}</span></div>
+    <div class="list">${rows || `<div class="row"><span></span><span class="muted">학생이 없어요. 반 관리에서 명렬표를 넣어 주세요.</span></div>`}</div>`;
+}
+
+function rowHTML(c, ev, item, st, en, e, p) {
+  const absent = en && en.absent;
+  let sub = [];
+  if (st.sex) sub.push(st.sex);
+  let ctl = "", vline = "";
+  if (absent) {
+    ctl = `<span class="muted" style="font-size:13px">미응시 처리</span>`;
+  } else if (item.kind === "level") {
+    ctl = item.levels.map(([pt]) => `<button class="lv" data-act="lv" data-sid="${st.id}" data-item="${item.id}" data-p="${pt}" aria-pressed="${e && e.pts === pt}">${pt}</button>`).join("");
+  } else {
+    if (item.variants) {
+      const v = varOf(item, e);
+      const minis = item.variants.map(x => `<button class="mini" data-act="rowvar" data-sid="${st.id}" data-item="${item.id}" data-v="${x.id}" aria-pressed="${x.id === v.id}">${x.label}</button>`).join("");
+      if (item.trials) vline = `<div class="vline">도구 ${minis}</div>`; else ctl += minis;
+    }
+    if (item.bySex) {
+      ctl += st.sex ? "" : `<button class="mini need" data-act="sex" data-sid="${st.id}">성별?</button>`;
+    }
+    if (item.trials) {
+      ctl += `<button class="qb s" data-act="mkadd" data-v="1" data-sid="${st.id}" data-item="${item.id}" aria-label="${esc(st.name)} 다음 칸 성공">○</button><button class="qb f" data-act="mkadd" data-v="0" data-sid="${st.id}" data-item="${item.id}" aria-label="${esc(st.name)} 다음 칸 실패">×</button>`;
+    } else {
+      const val = e && !e.manual ? fmtRaw(item, e.raw) : "";
+      const ph = e && e.manual ? "직접" : item.unit;
+      ctl += `<input class="raw" id="in-${st.id}" data-sid="${st.id}" data-item="${item.id}" value="${esc(val)}" placeholder="${ph}" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="${esc(st.name)} ${esc(item.name)} 기록">`;
+    }
+  }
+  const trial = item.trials && !absent;
+  if (trial) { const ts = trialSub(item, e); if (ts) sub.push(ts); }
+  const ptsCls = absent ? "pts abs" : p == null ? "pts" : p === item.max ? "pts full" : "pts on";
+  const ptsTxt = absent ? "미응시" : p == null ? "–" : p;
+  return `<div class="row${absent ? " absent" : ""}${trial ? " t" : ""}">
+    <span class="no">${esc(st.no)}</span>
+    <button class="who" data-act="open" data-sid="${st.id}"><span class="nm">${esc(st.name)}</span><span class="sub">${sub.map(esc).join(" · ")}${e && e.manual ? `<span>직접 선택</span>` : ""}</span></button>
+    <div class="ctl">${ctl}</div>
+    <span class="${ptsCls}" id="pt-${st.id}">${ptsTxt}</span>
+    ${trial ? `<div class="tline">${vline}${trialsHTML(item, e && !e.manual ? e : null, st, false)}</div>` : ""}
+  </div>`;
+}
+
+function sumView(c, ev) {
+  const studs = c.students || [];
+  const other = evalsOf(c).filter(e => e.id !== ev.id);
+  let complete = 0, sum = 0;
+  const body = studs.map(st => {
+    const en = entryOf(c, st.id, ev);
+    const t = evalTotal(c, st, ev);
+    const sem = semester(c, st);
+    if (t.done) { complete++; sum += t.total; }
+    const cells = ev.items.map(it => {
+      if (t.absent) return `<td class="muted">·</td>`;
+      const p = itemPts(it, en, st);
+      return `<td class="num">${p == null ? `<span class="dash">–</span>` : p}</td>`;
+    }).join("");
+    const otherCells = other.map(o => { const ot = evalTotal(c, st, o); return `<td class="num">${ot.done ? ot.total : ot.n ? `<span class="muted">${ot.total}…</span>` : `<span class="dash">–</span>`}</td>`; }).join("");
+    return `<tr data-act="open" data-sid="${st.id}">
+      <td class="num muted">${esc(st.no)}</td><td class="l">${esc(st.name)}</td>${cells}
+      <td class="num tot">${t.absent ? `${t.total}<small class="muted"> 미응시</small>` : t.done ? t.total : t.n ? `<span class="muted">${t.total}…</span>` : `<span class="dash">–</span>`}</td>
+      ${otherCells}
+      <td class="num">${sem ? sem.total : `<span class="dash">–</span>`}</td>
+      <td>${sem ? `<span class="grade ${sem.grade}">${sem.grade}</span>` : `<span class="dash">–</span>`}</td></tr>`;
+  }).join("");
+  const avg = complete ? (sum / complete).toFixed(1) : "–";
+  return `<div class="progress"><span>${esc(ev.tag)} 완료 <b class="num">${complete}</b> / <span class="num">${studs.length}</span>명 · 평균 <b class="num">${avg}</b>점</span>
+      <span>이름을 누르면 학생별 채점 카드가 열려요</span></div>
+    <div class="tblwrap"><table>
+      <thead><tr><th>번호</th><th class="l">이름</th>${ev.items.map(it => `<th>${esc(it.short)}<br><span class="num">${it.max}</span></th>`).join("")}
+      <th>${esc(ev.tag)}<br><span class="num">${ev.max}</span></th>${other.map(o => `<th>${esc(o.tag)}<br><span class="num">${o.max}</span></th>`).join("")}
+      <th>학기<br><span class="num">100</span></th><th>성취도</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="9" class="muted">학생이 없어요.</td></tr>`}</tbody></table></div>
+    <div class="actions">
+      <button class="btn" data-act="export-csv">이 반 CSV 저장</button>
+      <button class="btn" data-act="copy-tsv">표 복사 (엑셀 붙여넣기)</button>
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:10px">성취도: 학기 합계 80점 이상 A · 60점 이상 B · 60점 미만 C. 미응시는 해당 영역 기본점수 −1점(${ev.base - 1}점)으로 계산해요.</p>`;
+}
+
+/* ───────── 업무관리 ───────── */
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const fmtDate = s => s ? `${+s.slice(5, 7)}월 ${+s.slice(8, 10)}일` : "";
+function dday(due) {
+  if (!due) return "";
+  const d = Math.round((new Date(due + "T00:00") - new Date(today() + "T00:00")) / 86400000);
+  if (d < 0) return `<span class="dday over">${-d}일 지남</span>`;
+  if (d === 0) return `<span class="dday soon">오늘 마감</span>`;
+  return `<span class="dday${d <= 3 ? " soon" : ""}">D-${d}</span>`;
+}
+function tasksView() {
+  const items = S.tasks.items || [];
+  const open = items.filter(t => !t.done).sort((a, b) => (a.due || "9999") .localeCompare(b.due || "9999") || (a.date || "").localeCompare(b.date || ""));
+  const done = items.filter(t => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  const tab = S.ui.ttab === "done" ? "done" : "open";
+  const list = tab === "done" ? done : open;
+  const rows = list.map(t => `<div class="task${t.done ? " done" : ""}">
+      <input type="checkbox" id="tk-${t.id}" data-tid="${t.id}" ${t.done ? "checked" : ""} aria-label="완료 표시">
+      <div class="body"><div class="txt">${esc(t.text)}</div>
+        <div class="meta">${t.date ? `<span>업무일 ${fmtDate(t.date)}</span>` : ""}${t.due ? `<span>마감 ${fmtDate(t.due)}</span>` : ""}${t.done ? `<span class="dday ok">${t.doneAt ? fmtDate(new Date(t.doneAt - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)) + " 완료" : "완료"}</span>` : dday(t.due)}</div></div>
+      <div class="tools"><button class="mini" data-act="task-edit" data-tid="${t.id}">수정</button></div>
+    </div>`).join("");
+  return `<section class="tform" aria-label="업무 추가">
+      <div class="two">
+        <div class="field"><label for="t-date">업무일자</label><input type="date" id="t-date" value="${today()}"></div>
+        <div class="field"><label for="t-due">마감기한</label><input type="date" id="t-due"></div>
+      </div>
+      <div class="field"><label for="t-text">업무내용</label><textarea id="t-text" placeholder="예: 2학년 탁구 수행평가 결과 NEIS 입력"></textarea></div>
+      <div class="foot"><button class="btn primary" data-act="task-add">업무 추가</button></div>
+    </section>
+    <div class="subtabs" role="toolbar" aria-label="업무 상태">
+      <button data-act="ttab" data-id="open" aria-pressed="${tab === "open"}">진행중<span class="num">${open.length}</span></button>
+      <button data-act="ttab" data-id="done" aria-pressed="${tab === "done"}">완료<span class="num">${done.length}</span></button>
+    </div>
+    <div class="list">${rows || `<div class="task"><span></span><span class="muted">${tab === "done" ? "완료한 업무가 아직 없어요. 진행중 업무의 체크칸을 누르면 여기로 옮겨져요." : "진행중인 업무가 없어요. 위에서 업무를 추가하세요."}</span></div>`}</div>`;
+}
+function taskSheet(s) {
+  const t = (S.tasks.items || []).find(x => x.id === s.tid); if (!t) return "";
+  return `<div class="sh-head"><h3>업무 수정</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body">
+      <div class="two">
+        <div class="field"><label for="e-date">업무일자</label><input type="date" id="e-date" class="txt" value="${esc(t.date || "")}"></div>
+        <div class="field"><label for="e-due">마감기한</label><input type="date" id="e-due" class="txt" value="${esc(t.due || "")}"></div>
+      </div>
+      <div class="field"><label for="e-text">업무내용</label><textarea id="e-text" style="font-family:var(--f-body);min-height:100px">${esc(t.text)}</textarea></div>
+    </div>
+    <div class="sh-foot"><button class="btn danger" data-act="task-del" data-tid="${t.id}">삭제</button><span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="task-save" data-tid="${t.id}">저장</button></div>`;
+}
+
+/* ───────── 교과세특 ───────── */
+// 기재요령: 체육 교과는 성취수준의 특성, 실기능력, 교과적성, 학습활동 참여도 및 태도를 문장으로 입력.
+// 명사형 어미로 종결, 특수문자 지양. 자동 문장은 1,000Byte 안으로 맞춤(NEIS 한도 1,500Byte, 한글 3B, 영문·숫자·엔터 1B).
+const RM_BYTES = 1000, RM_MAX_BYTES = 1500;
+const PHR = {
+  g1a: {
+    intro: [
+      "체력 운동 단원에서 체력 증진과 체력 관리, 운동 처방의 원리를 배우고 이를 레이저 사격 수련에 연결함.",
+      "체력 증진의 의미와 운동 처방의 원리를 탐구하고 기록형 스포츠인 레이저 사격에 참여함.",
+      "체력 관리와 운동 처방에 대한 이해를 바탕으로 레이저 사격의 수행 원리를 익히는 활동에 참여함.",
+      "자신의 체력 수준을 점검하고 운동 처방 계획을 세우는 활동과 레이저 사격 수련에 참여함.",
+      "기록형 스포츠인 레이저 사격을 통해 집중력과 자세 조절의 중요성을 체험하며 체력 운동의 원리를 함께 학습함.",
+      "체력 증진 운동의 원리를 배우고 레이저 사격의 경기 방법과 안전 수칙을 익힘.",
+      "운동 처방의 의미와 원리를 배우고 이를 바탕으로 레이저 사격의 경기 기능을 단계적으로 수련함.",
+      "체력 증진과 체력 관리의 개념을 학습하고 정확성과 집중력이 요구되는 레이저 사격에 참여함.",
+      "체력 운동의 원리를 이해하는 활동과 함께 기록형 스포츠의 특성을 레이저 사격으로 체험함.",
+      "체력 관리 방법을 탐색하고 레이저 사격의 수행 원리를 적용하여 기록 향상에 도전함.",
+      "자신의 체력을 진단하고 운동 처방을 계획하는 활동을 하며 레이저 사격으로 기록형 스포츠의 특성을 익힘.",
+      "체력 증진 원리에 대한 학습과 레이저 사격 실습을 병행하며 운동과 집중력의 관계를 탐구함.",
+      "레이저 사격의 경기 방법과 기록 측정 방식을 익히고 체력 운동의 원리를 함께 학습함.",
+    ],
+    und: {
+      3: ["체력 증진의 원리를 과부하와 점진성, 개별성의 개념에 근거하여 정확히 설명하고 자신에게 맞는 운동 처방 요소를 구체적으로 제시함.",
+          "체력 관리의 필요성을 건강과 연결하여 논리적으로 설명하며 맞춤형 운동 처방에서 빈도와 강도, 시간, 형태가 적용되는 과정을 분석함.",
+          "운동 처방의 구성 요소를 실제 사례와 함께 명확하게 설명하여 체력 증진 원리에 대한 깊이 있는 이해를 보여 줌.",
+          "체력 요소별 특성을 정확히 구분하고 각 요소를 향상시키는 운동 방법을 근거를 들어 설명함.",
+          "운동 처방의 원리를 자신의 생활 습관에 적용한 계획을 세우고 그 이유를 조리 있게 설명함."],
+      2: ["체력 증진과 체력 관리의 의미를 이해하고 운동 처방의 주요 요소를 설명함.",
+          "체력 증진의 원리를 대략적으로 이해하고 이를 자신의 운동 계획에 일부 적용함.",
+          "운동 처방의 구성 요소를 이해하고 체력 관리 원리의 개념을 설명함.",
+          "체력 요소의 종류를 이해하고 각 요소에 맞는 운동을 일부 제시함.",
+          "운동 처방에서 강도와 시간의 의미를 이해하고 자신의 운동 계획에 반영하려 노력함."],
+      1: ["체력 증진과 운동 처방의 기본 개념을 익히며 체력 관리의 필요성을 알아 감.",
+          "운동 처방 요소의 명칭을 익히고 자신의 체력 수준에 관심을 갖기 시작함.",
+          "체력 관리의 기본 원리를 배우며 건강한 생활과 운동의 관계를 이해해 감.",
+          "체력 요소의 의미를 익히고 간단한 운동 계획을 세워 봄.",
+          "운동 처방의 기초 개념을 익히며 꾸준한 운동의 필요성을 인식함."],
+    },
+    zero: {
+      3: ["영점 사격에서 안정된 자세와 호흡 조절로 표적의 흑점을 빠르고 정확하게 맞히는 뛰어난 집중력을 보임.",
+          "영점 사격 시 조준과 격발의 리듬을 스스로 찾아 짧은 시간 안에 정확한 사격을 해냄.",
+          "영점 사격에서 팔과 어깨의 긴장을 조절하며 흔들림 없는 조준으로 빠른 기록을 세움.",
+          "영점 사격 과제에서 시선과 가늠자를 일치시키는 요령을 빠르게 익혀 정확하고 신속하게 표적을 맞힘.",
+          "영점 사격에서 침착하게 호흡을 멈추고 격발하는 동작이 몸에 익어 안정적인 기록을 보임."],
+      2: ["영점 사격에서 자세를 안정적으로 유지하며 조준 원리를 적용하여 꾸준히 표적을 맞힘.",
+          "영점 사격 연습을 반복하며 조준 시간을 줄여 나가는 향상을 보임.",
+          "영점 사격에서 격발 타이밍을 조절하며 정확도를 점차 높여 감.",
+          "영점 사격 시 자신에게 맞는 자세를 찾아 무난하게 과제를 해결함.",
+          "영점 사격에서 흔들리는 조준을 스스로 바로잡으며 과제를 수행함."],
+      1: ["영점 사격에서 조준 자세를 익히는 데 시간이 걸렸으나 반복 연습을 통해 격발 동작에 익숙해짐.",
+          "영점 사격의 기본 자세와 조준 방법을 익히며 끝까지 과제를 수행함.",
+          "영점 사격에서 표적을 맞히기 위해 자세를 여러 번 고쳐 가며 꾸준히 도전함.",
+          "영점 사격의 조준 원리를 배우며 집중하는 시간을 조금씩 늘려 감.",
+          "영점 사격 연습에 성실히 참여하며 안정된 자세를 만들기 위해 노력함."],
+    },
+    rec: {
+      3: ["기록 사격에서 호흡과 격발 타이밍을 일정하게 유지하여 높은 점수를 안정적으로 기록함.",
+          "기록 사격에서 자신만의 준비 동작을 만들어 실수를 줄이고 우수한 기록을 달성함.",
+          "기록 사격 중 한 발 한 발에 집중하며 기복 없는 높은 점수를 유지함.",
+          "기록 사격에서 탄착 결과를 분석하여 자세를 미세하게 조정하는 능력이 뛰어남.",
+          "기록 사격에서 긴장되는 상황에서도 평정심을 유지하여 우수한 점수를 얻음."],
+      2: ["기록 사격에서 수행 원리를 적용하여 고른 점수를 기록함.",
+          "기록 사격 중 흔들리는 자세를 스스로 점검하며 기록을 향상시킴.",
+          "기록 사격에서 일정한 격발 리듬을 찾기 위해 노력하여 안정적인 점수를 얻음.",
+          "기록 사격에서 연습 때보다 향상된 점수를 기록하며 꾸준한 성장을 보임.",
+          "기록 사격의 경기 방법을 이해하고 자세를 유지하며 무난한 기록을 남김."],
+      1: ["기록 사격에 성실히 참여하며 자세 교정을 통해 기록을 높이려 노력함.",
+          "기록 사격의 경기 방법을 이해하고 자신의 기록 향상을 목표로 연습함.",
+          "기록 사격에서 조준 자세를 다듬으며 끝까지 집중하려는 모습을 보임.",
+          "기록 사격 과정에서 실수를 줄이기 위해 격발 동작을 반복하여 연습함.",
+          "기록 사격에 꾸준히 도전하며 자신의 기록을 확인하고 개선하려 노력함."],
+    },
+    att: {
+      3: ["연습과 경기 과정에서 어려움이 있어도 끝까지 인내하며 적극적으로 도전하는 태도가 돋보임.",
+          "기대에 못 미친 기록을 분석하고 다시 도전하는 끈기 있는 모습을 꾸준히 보임.",
+          "반복되는 연습에도 지치지 않고 스스로 목표를 세워 도전하는 자세가 인상적임.",
+          "어려운 과제 앞에서도 포기하지 않고 자신의 한계를 넘어서려는 도전 정신을 보임.",
+          "수업 시간마다 적극적으로 연습에 임하며 끈기 있게 기록 향상에 도전함."],
+      2: ["연습 과정에서 인내심을 갖고 과제에 적극적으로 도전함.",
+          "주어진 과제에 성실하게 도전하며 기록 향상을 위해 노력함.",
+          "연습에 꾸준히 참여하며 어려운 동작에도 도전하는 모습을 보임.",
+          "실수에도 다시 시도하는 태도로 수업에 성실히 참여함.",
+          "연습 목표를 지키기 위해 인내심을 갖고 활동에 참여함."],
+      1: ["수업 활동에 참여하며 인내심을 갖고 과제를 해내려는 노력을 보임.",
+          "연습 과정에서 점차 참여 의지를 키워 나감.",
+          "쉽지 않은 과제에도 수업에 끝까지 참여하려고 노력함.",
+          "친구들의 격려 속에서 연습에 참여하며 도전하는 경험을 쌓아 감.",
+          "활동에 대한 관심을 넓혀 가며 과제를 마무리하려 노력함."],
+    },
+  },
+  g1b: {
+    intro: [
+      "생활환경형 스포츠인 플라잉디스크의 역사와 특성을 탐색하고 던지기 기능을 익히는 활동에 참여함.",
+      "플라잉디스크 단원에서 생활 공간과 기구를 활용하는 스포츠의 특성을 이해하고 던지기 기능을 연습함.",
+      "플라잉디스크 활동을 통해 생활환경형 스포츠의 수행 원리와 활동 방법을 배움.",
+      "생활 공간에서 즐길 수 있는 플라잉디스크의 특성을 탐구하고 포핸드와 백핸드 던지기를 연습함.",
+      "플라잉디스크의 비행 원리를 익히고 거리별 목표 던지기 활동에 참여함.",
+      "플라잉디스크의 경기 방법과 활동 전략을 배우고 안전하게 던지기 연습에 참여함.",
+      "생활환경형 스포츠의 역사와 특성을 비교하는 활동을 하고 플라잉디스크로 기본 기능을 익힘.",
+      "플라잉디스크를 활용한 생활환경형 스포츠 활동에 참여하며 지속가능한 스포츠 환경의 의미를 생각함.",
+      "플라잉디스크 단원에서 디스크의 비행 원리를 적용한 던지기 기능을 단계적으로 연습함.",
+      "생활 속 공간과 기구를 활용하는 스포츠의 특성을 플라잉디스크 활동으로 체험함.",
+      "플라잉디스크의 역사와 종목별 특성을 탐색하고 거리에 따른 던지기 과제에 도전함.",
+      "플라잉디스크 활동에서 포핸드와 백핸드의 수행 원리를 배우고 목표 지점 던지기를 수행함.",
+    ],
+    und: {
+      3: ["플라잉디스크의 역사와 경기 방법을 다른 생활환경형 스포츠와 비교하여 공통점과 차이점을 구체적으로 설명함.",
+          "플라잉디스크의 비행 원리와 경기 규칙을 정확히 이해하고 친구들에게 설명할 수 있을 만큼 깊이 있게 탐구함.",
+          "디스크의 회전과 각도가 비행 거리에 주는 영향을 원리에 근거하여 명확하게 설명함.",
+          "플라잉디스크를 활용한 여러 종목의 특성을 스스로 조사하여 정리하는 탐구 능력을 보임.",
+          "생활환경형 스포츠의 특성을 이해하고 플라잉디스크 경기 방법과 전략을 정확히 설명함."],
+      2: ["플라잉디스크의 역사와 특성을 이해하고 경기 방법을 대략적으로 설명함.",
+          "생활환경형 스포츠로서 플라잉디스크의 특징을 이해함.",
+          "플라잉디스크의 기본 규칙과 경기 방법을 이해하고 활동에 적용함.",
+          "디스크의 비행 원리를 대략적으로 이해하고 던지기 연습에 활용함.",
+          "플라잉디스크 종목의 특징을 조사하여 주요 내용을 설명함."],
+      1: ["플라잉디스크의 기본 규칙과 특징을 익혀 나감.",
+          "플라잉디스크의 역사와 특성을 찾아보며 일부 내용을 제시함.",
+          "플라잉디스크 경기 방법을 배우며 생활환경형 스포츠에 관심을 갖게 됨.",
+          "디스크를 다루는 기본 방법과 규칙을 익혀 감.",
+          "플라잉디스크의 특징을 배우며 활동 방법을 이해해 감."],
+    },
+    fore: {
+      3: ["포핸드 던지기에서 손목 스냅과 회전을 효과적으로 활용하여 거리가 늘어나도 목표 지점에 정확히 디스크를 보냄.",
+          "포핸드 던지기 시 몸통 회전과 놓는 각도를 조절하여 안정적인 비행을 만들어 냄.",
+          "포핸드 던지기에서 디스크의 수평을 유지하는 요령을 익혀 먼 거리에서도 높은 성공률을 보임.",
+          "포핸드 그립과 손목 동작이 안정적이어서 거리에 따라 힘을 조절하며 정확하게 던짐.",
+          "포핸드 던지기의 수행 원리를 정확히 적용하여 목표 지점에 일관되게 디스크를 넣음."],
+      2: ["포핸드 던지기의 수행 원리를 일부 적용하여 목표 지점으로 디스크를 보냄.",
+          "포핸드 던지기 동작을 익혀 거리별로 정확도를 높여 감.",
+          "포핸드 던지기에서 손목 스냅을 활용하며 무난하게 과제를 수행함.",
+          "포핸드 던지기 시 놓는 각도를 조절하려 노력하여 성공률을 높임.",
+          "포핸드 던지기 연습을 통해 가까운 거리에서 안정적인 정확도를 보임."],
+      1: ["포핸드 그립과 던지기 동작을 익히며 꾸준히 연습함.",
+          "포핸드 던지기에서 방향 조절에 어려움이 있었으나 반복 연습으로 동작에 익숙해짐.",
+          "포핸드 던지기의 기본 자세를 배우며 끝까지 과제에 참여함.",
+          "포핸드 던지기에서 디스크를 수평으로 놓기 위해 꾸준히 노력함.",
+          "포핸드 동작을 익히는 과정에서 조금씩 자신감을 얻어 감."],
+    },
+    back: {
+      3: ["백핸드 던지기에서 팔 동작과 체중 이동을 자연스럽게 연결하여 정확하고 안정적인 비행을 보여 줌.",
+          "백핸드 던지기의 수행 원리를 정확히 적용하여 먼 거리에서도 목표 지점에 디스크를 넣음.",
+          "백핸드 던지기 시 어깨와 팔꿈치, 손목으로 이어지는 동작이 매끄러워 높은 정확도를 보임.",
+          "백핸드 던지기에서 회전을 충분히 주어 곧게 날아가는 디스크를 던짐.",
+          "백핸드 던지기의 힘 조절이 뛰어나 거리별 목표를 안정적으로 맞힘."],
+      2: ["백핸드 던지기 동작을 익혀 목표 지점 가까이 디스크를 보내는 능력을 보임.",
+          "백핸드 던지기에서 놓는 시점을 조절하며 정확도를 높여 감.",
+          "백핸드 던지기의 기본 원리를 적용하여 무난하게 과제를 수행함.",
+          "백핸드 던지기에서 체중 이동을 활용하려 노력하며 성공률을 높임.",
+          "백핸드 던지기 연습을 거듭하며 방향 조절 능력이 향상됨."],
+      1: ["백핸드 던지기의 기본 자세를 익히며 성실하게 연습함.",
+          "백핸드 던지기에서 디스크의 방향을 조절하기 위해 꾸준히 노력함.",
+          "백핸드 그립과 팔 동작을 배우며 끝까지 과제에 참여함.",
+          "백핸드 던지기에서 어려움을 겪었으나 포기하지 않고 연습을 이어 감.",
+          "백핸드 던지기 동작을 반복하며 조금씩 정확도를 높여 감."],
+    },
+    att: {
+      3: ["활동 후 기구를 정리하고 활동 공간을 깨끗이 관리하는 등 지속가능한 스포츠 환경을 위한 공동체 의식을 적극적으로 실천함.",
+          "모둠 친구의 연습을 도우며 함께 쓰는 공간을 배려하는 태도가 돋보임.",
+          "안전한 활동 공간을 위해 주변을 살피고 친구들에게 먼저 주의를 주는 등 공동체 의식을 발휘함.",
+          "공용 기구를 소중히 다루고 정리 활동에 앞장서는 모습을 꾸준히 보임.",
+          "스포츠 환경을 아끼는 태도로 모둠 활동을 이끌며 협력적인 분위기를 만듦."],
+      2: ["스포츠 환경에 친화적인 태도를 갖고 공동 활동 공간을 바르게 사용함.",
+          "친구들과 협력하며 기구 사용 규칙을 지킴.",
+          "활동 후 기구 정리에 참여하며 함께 쓰는 공간을 배려함.",
+          "모둠 활동에서 맡은 역할을 성실히 수행하며 공동체 의식을 보임.",
+          "안전 수칙을 지키며 친구들과 사이좋게 활동함."],
+      1: ["기구 정리와 공간 사용 규칙을 지키려 노력함.",
+          "공동 활동에 참여하며 스포츠 환경을 배려하는 태도를 익혀 나감.",
+          "친구들과 함께 활동하며 공용 기구를 다루는 방법을 익혀 감.",
+          "활동 공간의 안전 수칙을 배우며 모둠 활동에 참여함.",
+          "기구 정리 활동에 참여하며 공동체의 일원으로서 역할을 배워 감."],
+    },
+  },
+  g2a: {
+    intro: [
+      "신체 건강 활동 단원에서 플레이트야구를 통해 자신의 체력에 맞는 운동 계획을 세우고 안전하게 실천함.",
+      "신체 건강의 의미와 신체 활동의 종류를 탐구하고 플레이트야구 활동으로 이를 실천함.",
+      "자신에게 맞는 신체 건강 활동으로 플레이트야구에 참여하며 운동 처방 계획을 세워 실천함.",
+      "플레이트야구 활동을 통해 신체 건강 활동의 특성을 이해하고 꾸준한 실천 방법을 익힘.",
+      "신체 조건과 체력 수준을 고려한 운동 계획을 세우고 플레이트야구 활동에 적용함.",
+      "신체 건강 활동의 종류와 특성을 분석하고 플레이트야구를 자신에게 맞는 신체 활동으로 실천함.",
+      "운동 처방의 원리를 적용하여 플레이트야구 활동 계획을 세우고 안전하게 참여함.",
+      "플레이트야구의 타격과 수비, 주루 기능을 익히며 신체 건강 활동을 꾸준히 실천함.",
+      "자신의 신체 조건에 맞는 활동 강도를 고려하며 플레이트야구 활동에 참여함.",
+      "신체 건강의 의미를 이해하고 플레이트야구를 통해 규칙적인 신체 활동 습관을 기름.",
+      "플레이트야구 활동에서 안전 수칙을 지키며 타격과 종합 기능을 연습함.",
+      "신체 건강 활동으로서 플레이트야구의 특성을 탐구하고 자신에게 맞는 실천 방법을 찾음.",
+    ],
+    und: {
+      3: ["플레이트야구의 경기 규칙과 공격 및 수비 전략을 정확히 이해하여 경기 상황에 맞는 판단을 내림.",
+          "주루와 수비 위치 선정 등 경기 전략을 논리적으로 설명하고 팀 작전 수립에 기여함.",
+          "경기 상황별 규칙 적용을 정확히 이해하여 판정이 애매한 장면을 친구들에게 설명함.",
+          "공격과 수비의 전략적 선택을 근거를 들어 설명하며 경기 이해도가 높음.",
+          "플레이트야구의 규칙과 전략을 깊이 있게 이해하고 이를 실제 경기 운영에 활용함."],
+      2: ["플레이트야구의 주요 규칙과 기본 전략을 이해함.",
+          "경기 규칙을 대략적으로 이해하고 실제 경기에 적용함.",
+          "공격과 수비의 기본 전략을 이해하고 경기 상황에 맞게 일부 활용함.",
+          "플레이트야구 경기 방법을 이해하고 팀의 작전에 맞춰 경기에 참여함.",
+          "주요 규칙을 이해하고 경기 중 상황에 맞게 움직이려 노력함."],
+      1: ["플레이트야구의 기본 규칙을 익히며 경기에 참여함.",
+          "경기 방법을 익혀 가며 규칙을 지키려 노력함.",
+          "플레이트야구의 공격과 수비 순서를 익히며 경기에 참여함.",
+          "경기 규칙을 배우며 팀 활동에 함께함.",
+          "기본 규칙을 이해해 가며 경기 흐름에 적응해 감."],
+    },
+    hit: {
+      3: ["타격 시 공을 끝까지 보고 스윙 궤적을 일정하게 유지하여 목표 구역으로 정확하게 공을 보냄.",
+          "타격 자세가 안정적이며 체중 이동을 활용하여 원하는 방향으로 공을 보내는 능력이 뛰어남.",
+          "타격 타이밍을 정확히 맞추어 높은 성공률로 목표 구역에 공을 보냄.",
+          "타격 시 하체를 고정하고 몸통 회전을 활용하여 힘 있고 정확한 타구를 만듦.",
+          "공의 높이에 맞추어 스윙을 조절하는 능력이 뛰어나 안정적인 타격을 보여 줌."],
+      2: ["타격의 기본 원리를 적용하여 공을 목표 방향으로 보내는 능력을 보임.",
+          "반복 연습을 통해 타격의 정확성을 꾸준히 높임.",
+          "타격 자세를 스스로 점검하며 목표 구역으로 공을 보내는 횟수를 늘려 감.",
+          "타격 시 시선을 공에 두려 노력하여 무난한 정확성을 보임.",
+          "스윙 동작을 익혀 일정한 방향으로 공을 보내는 능력이 향상됨."],
+      1: ["타격 자세와 스윙 동작을 익히며 연습에 성실히 참여함.",
+          "공을 맞히는 데 어려움이 있었으나 자세를 교정하며 끝까지 도전함.",
+          "타격의 기본 자세를 배우며 공을 끝까지 보는 연습을 꾸준히 함.",
+          "타격 연습에 빠짐없이 참여하며 스윙 동작에 익숙해짐.",
+          "타격 타이밍을 맞추기 위해 반복하여 연습하는 모습을 보임."],
+    },
+    skill: {
+      3: ["야구 기능 종합 과제를 빠르고 정확하게 수행하여 포구와 송구, 주루 기능을 유기적으로 연결하는 능력이 뛰어남.",
+          "종합 기능 평가에서 민첩한 동작 전환과 정확한 공 처리로 우수한 기록을 보임.",
+          "포구 후 송구로 이어지는 동작이 매끄럽고 주루 속도가 빨라 종합 과제를 우수하게 해냄.",
+          "종합 기능 과제에서 실수 없이 동작을 연결하며 뛰어난 순발력을 보임.",
+          "공을 잡고 던지는 동작의 정확성과 빠른 주루가 조화를 이루어 우수한 기록을 남김."],
+      2: ["야구 기능 종합 과제를 안정적으로 수행하며 기본 기능을 연결함.",
+          "포구와 송구 동작을 익혀 종합 과제를 무리 없이 해냄.",
+          "종합 기능 과제에서 동작 사이의 연결을 다듬으며 기록을 향상시킴.",
+          "포구와 주루 동작을 안정적으로 수행하며 과제를 완수함.",
+          "종합 과제의 순서를 정확히 익혀 차분하게 수행함."],
+      1: ["야구 기능 종합 과제에 성실히 참여하며 기본 동작을 익혀 감.",
+          "종합 과제를 끝까지 수행하며 기능 향상을 위해 노력함.",
+          "포구와 송구의 기본 동작을 익히며 종합 과제에 도전함.",
+          "종합 기능 과제에서 동작을 하나씩 익혀 가며 꾸준히 연습함.",
+          "종합 과제 수행 과정에서 자신의 부족한 동작을 확인하고 연습함."],
+    },
+    outro: {
+      3: ["활동 전후 준비 운동과 정리 운동을 스스로 챙기며 안전 수칙을 지켜 운동을 실천함.",
+          "자신의 체력 수준에 맞게 운동 강도를 조절하며 안전하게 활동함.",
+          "운동 계획에 따라 꾸준히 실천하며 건강한 운동 습관을 형성함."],
+      2: ["안전 수칙을 지키며 꾸준히 운동에 참여함.",
+          "준비 운동과 정리 운동을 빠짐없이 하며 안전하게 활동함.",
+          "계획한 운동을 성실하게 실천하려 노력함."],
+      1: ["안전 수칙을 지키며 활동에 참여하려 노력함.",
+          "준비 운동의 중요성을 알고 활동에 참여함.",
+          "운동 계획을 세우고 실천해 보는 경험을 쌓음."],
+    },
+  },
+  g2b: {
+    intro: [
+      "네트형 스포츠인 탁구의 역사와 특성을 탐색하고 서브와 스트로크 기능을 익힘.",
+      "탁구 단원에서 네트형 스포츠의 수행 원리를 이해하고 경기 기능을 연습함.",
+      "네트형 스포츠의 특성을 탁구 활동으로 체험하며 서브와 스트로크를 연습함.",
+      "탁구의 경기 방법과 전략을 배우고 정확한 기능 수행을 위한 연습에 참여함.",
+      "탁구를 통해 빈 공간을 공략하는 네트형 스포츠의 원리를 익힘.",
+      "네트형 스포츠의 역사와 특성을 비교하고 탁구의 경기 기능을 단계적으로 익힘.",
+      "탁구의 수행 원리를 적용하여 서브와 스트로크의 정확성을 높이는 연습에 참여함.",
+      "탁구 경기 방법을 이해하고 안전하게 경기하며 네트형 스포츠의 전략을 익힘.",
+      "네트형 스포츠인 탁구에서 공의 회전과 속도를 조절하는 원리를 배우고 연습함.",
+      "탁구 활동을 통해 상대의 빈 공간을 공략하는 전략과 기본 기능을 익힘.",
+      "탁구의 역사와 특성을 탐색하고 목표 구역을 향한 서브와 스트로크 과제에 도전함.",
+      "네트형 스포츠의 경기 방법과 예절을 배우고 탁구 기능 연습에 참여함.",
+    ],
+    serve: {
+      3: ["서브 시 공의 회전과 길이를 조절하여 목표 구역에 안정적으로 넣는 능력이 뛰어남.",
+          "토스 높이와 라켓 각도를 일정하게 유지하여 정확한 서브를 구사함.",
+          "서브의 방향과 속도를 의도대로 조절하여 높은 성공률을 보임.",
+          "짧은 서브와 긴 서브를 구분하여 넣을 만큼 서브 기능이 뛰어남.",
+          "서브 동작이 안정적이고 일관되어 목표 구역에 정확하게 공을 보냄."],
+      2: ["서브의 기본 원리를 이해하고 목표 구역으로 공을 보내는 능력을 보임.",
+          "서브 동작을 반복 연습하여 성공률을 높여 감.",
+          "서브 시 라켓 각도를 조절하려 노력하며 무난하게 과제를 수행함.",
+          "토스와 타구 동작을 연결하여 안정적인 서브를 넣음.",
+          "서브 연습을 통해 목표 구역을 향한 정확도가 향상됨."],
+      1: ["서브 동작을 익히며 꾸준히 연습에 참여함.",
+          "서브의 토스와 타구 타이밍을 익혀 가며 성실히 연습함.",
+          "서브를 넣는 기본 자세를 배우며 끝까지 과제에 도전함.",
+          "서브 시 공을 네트 너머로 보내기 위해 반복하여 연습함.",
+          "서브 동작에 익숙해지기 위해 꾸준히 노력함."],
+    },
+    stroke: {
+      3: ["포핸드와 백핸드 스트로크를 상황에 맞게 구사하며 랠리를 안정적으로 이어 감.",
+          "몸의 회전과 타점을 활용하여 정확하고 일관된 스트로크를 보여 줌.",
+          "스트로크 시 공의 높이와 속도에 맞추어 라켓 면을 조절하는 능력이 뛰어남.",
+          "포핸드와 백핸드 전환이 자연스러워 목표 구역에 높은 성공률로 공을 보냄.",
+          "스트로크 동작이 간결하고 안정적이어서 정확한 코스 공략이 가능함."],
+      2: ["포핸드와 백핸드 스트로크의 기본 원리를 적용하여 공을 목표 구역으로 보냄.",
+          "스트로크 연습을 통해 타점과 자세를 개선함.",
+          "포핸드 스트로크를 안정적으로 구사하며 백핸드의 정확도를 높여 감.",
+          "스트로크 시 라켓 면을 조절하려 노력하여 무난한 성공률을 보임.",
+          "랠리 연습을 통해 스트로크의 일관성이 향상됨."],
+      1: ["포핸드와 백핸드 스트로크 자세를 익히며 성실히 연습함.",
+          "스트로크 시 타점을 맞추는 데 어려움이 있었으나 꾸준히 연습에 참여함.",
+          "스트로크의 기본 동작을 배우며 공을 넘기는 연습을 이어 감.",
+          "라켓을 잡는 법과 스윙 동작을 익히며 스트로크에 도전함.",
+          "스트로크 연습에 꾸준히 참여하며 공에 대한 감각을 키워 감."],
+    },
+    outro: {
+      3: ["경기 중 상대를 존중하고 정정당당하게 경쟁하는 스포츠맨십을 보임.",
+          "상대의 좋은 플레이를 인정하고 격려하는 성숙한 경기 태도를 보임.",
+          "경기 예절을 지키며 상대를 배려하는 스포츠맨십이 돋보임."],
+      2: ["규칙을 지키며 상대를 배려하는 태도로 경기에 임함.",
+          "경기 예절을 지키며 친구들과 즐겁게 활동함.",
+          "승패보다 과정에 집중하며 정정당당하게 경기함."],
+      1: ["경기 예절을 익히며 친구들과 함께 활동함.",
+          "경기 규칙을 지키려 노력하며 활동에 참여함.",
+          "친구들과 함께 경기하며 상대를 배려하는 법을 배워 감."],
+    },
+  },
+};
+const CLOSE = {
+  3: ["자신의 수행 과정을 스스로 점검하고 개선 방법을 찾는 자기주도적인 학습 태도가 우수함.",
+      "운동 수행 능력과 교과 이해가 고르게 뛰어나 체육 교과에 대한 적성이 돋보임.",
+      "배운 원리를 실기에 적용하는 능력이 뛰어나 체육 교과에 대한 높은 이해를 보임.",
+      "실기와 이론 모두에서 꾸준히 우수한 성취를 보이며 체육 활동에 대한 흥미가 높음.",
+      "스스로 목표를 세우고 성취해 나가는 모습에서 체육 교과에 대한 열정이 드러남."],
+  2: ["꾸준한 연습을 통해 기능이 향상되는 모습을 보임.",
+      "성실한 태도로 수업에 참여하며 꾸준히 성장함.",
+      "배운 내용을 실기에 적용하려는 노력이 돋보임.",
+      "수업 활동에 꾸준히 참여하며 기능과 이해가 고르게 향상됨.",
+      "자신의 부족한 점을 알고 개선하려는 태도로 수업에 임함."],
+  1: ["수업에 꾸준히 참여하며 기능 향상을 위해 노력하는 모습을 보임.",
+      "어려운 과제에도 포기하지 않고 끝까지 참여하는 태도를 보임.",
+      "활동을 거듭하며 체육 수업에 대한 자신감을 키워 감.",
+      "친구들과 함께 활동하며 운동에 대한 흥미를 넓혀 감.",
+      "작은 성공을 쌓아 가며 꾸준히 성장하는 모습을 보임."],
+};
+const lvOf = (p, max) => p / max >= 0.85 ? 3 : p / max >= 0.6 ? 2 : 1;
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const neisBytes = s => { let b = 0; for (const ch of String(s)) b += ch === "\n" ? 1 : ch.charCodeAt(0) < 128 ? 1 : 3; return b; };
+const sentences = text => String(text || "").split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean);
+
+// 같은 문장이 다시 쓰일 때 바꿔 줄 끝말 (위에서부터 먼저 맞는 것 하나만 적용)
+const ENDINGS = [
+  [/실천함\.$/, ["실행함.", "실천에 옮김."]],
+  [/참여함\.$/, ["임함.", "함께함."]],
+  [/익힘\.$/, ["습득함.", "익혀 나감."]],
+  [/학습함\.$/, ["공부함.", "익힘."]],
+  [/연습함\.$/, ["갈고닦음.", "다져 나감."]],
+  [/수련함\.$/, ["연마함.", "갈고닦음."]],
+  [/체험함\.$/, ["경험함.", "몸소 익힘."]],
+  [/도전함\.$/, ["적극적으로 도전함.", "힘씀."]],
+  [/탐구함\.$/, ["살펴봄.", "탐색함."]],
+  [/배움\.$/, ["익힘.", "학습함."]],
+  [/생각함\.$/, ["고민함.", "되새김."]],
+  [/수행함\.$/, ["해냄.", "완수함."]],
+  [/적용함\.$/, ["활용함.", "접목함."]],
+  [/기름\.$/, ["키움.", "형성함."]],
+  [/찾음\.$/, ["모색함.", "탐색함."]],
+  [/연결함\.$/, ["접목함.", "연계함."]],
+  [/돋보임\.$/, ["두드러짐.", "인상적임."]],
+  [/보임\.$/, ["나타냄.", "드러냄."]],
+  [/뛰어남\.$/, ["우수함.", "탁월함."]],
+  [/우수함\.$/, ["뛰어남.", "돋보임."]],
+  [/노력함\.$/, ["힘씀.", "애씀."]],
+  [/향상됨\.$/, ["나아짐.", "좋아짐."]],
+  [/높임\.$/, ["끌어올림."]],
+  [/해냄\.$/, ["완수함."]],
+  [/기록함\.$/, ["달성함."]],
+  [/제시함\.$/, ["밝힘.", "설명함."]],
+  [/인식함\.$/, ["깨달음.", "알게 됨."]],
+  [/익숙해짐\.$/, ["능숙해짐."]],
+  [/늘려 감\.$/, ["늘려 나감."]],
+  [/세워 봄\.$/, ["세워 나감."]],
+  [/이해해 감\.$/, ["이해해 나감."]],
+  [/활용함\.$/, ["적용함."]],
+  [/달성함\.$/, ["이룸.", "거둠."]],
+  [/시작함\.$/, ["시작하는 모습을 보임."]],
+  [/활동함\.$/, ["참여함.", "임함."]],
+  [/형성함\.$/, ["만들어 감.", "다져 감."]],
+  [/설명함\.$/, ["제시함.", "풀어냄."]],
+  [/기여함\.$/, ["이바지함.", "힘을 보탬."]],
+  [/이해함\.$/, ["파악함.", "알아 감."]],
+  [/남김\.$/, ["거둠."]],
+  [/보여 줌\.$/, ["선보임.", "드러냄."]],
+  [/만듦\.$/, ["이끌어 냄.", "만들어 냄."]],
+  [/구사함\.$/, ["펼쳐 보임.", "선보임."]],
+  [/성장함\.$/, ["발전함.", "나아감."]],
+  [/지킴\.$/, ["준수함.", "지켜 나감."]],
+  [/드러남\.$/, ["엿보임.", "나타남."]],
+  [/높음\.$/, ["두드러짐."]],
+  [/분석함\.$/, ["살펴봄.", "따져 봄."]],
+  [/완수함\.$/, ["해냄.", "마무리함."]],
+  [/수행함\.$/, ["해냄.", "완수함."]],
+  [/맞힘\.$/, ["적중시킴.", "맞혀 냄."]],
+  [/세움\.$/, ["달성함."]],
+  [/얻음\.$/, ["거둠.", "받음."]],
+  [/보냄\.$/, ["보내는 데 성공함."]],
+  [/이어 감\.$/, ["유지함."]],
+  [/익혀 감\.$/, ["익혀 나감.", "몸에 익힘."]],
+  [/키워 감\.$/, ["키워 나감.", "넓혀 감."]],
+  [/넓혀 감\.$/, ["넓혀 나감.", "키워 감."]],
+  [/쌓아 감\.$/, ["쌓아 나감."]],
+  [/알아 감\.$/, ["익혀 감."]],
+  [/나감\.$/, ["감."]],
+  [/임\.$/, ["으로 보임."]],
+];
+function variantsOf(s) {
+  for (const [re, alts] of ENDINGS) if (re.test(s)) return [s, ...alts.map(a => s.replace(re, a))];
+  return [s];
+}
+// 반 안에서 가장 적게 쓰인 문장을 고르고(같으면 무작위), 이미 쓰인 문장이면 끝말을 바꾼 형태를 씀
+function pickBal(arr, r, used, avoid) {
+  const one = v => (used.get(v) || 0) + (avoid && avoid.has(v) ? 1000 : 0);
+  const fam = s => variantsOf(s).reduce((a, v) => a + one(v), 0);
+  const min = Math.min(...arr.map(fam));
+  const cand = arr.filter(s => fam(s) === min);
+  const base = cand[Math.floor(r() * cand.length)];
+  const vs = variantsOf(base);
+  const vmin = Math.min(...vs.map(one));
+  return vs.find(v => one(v) === vmin);
+}
+function sigOf(c, st) {
+  return evalsOf(c).map(ev => {
+    const en = entryOf(c, st.id, ev);
+    if (en && en.absent) return "A";
+    return ev.items.map(it => { const p = itemPts(it, en, st); return p == null ? "" : p; }).join(",");
+  }).join("|");
+}
+function genParts(c, st, r, used, avoid) {
+  const parts = [];
+  let gotP = 0, gotM = 0;
+  const take = arr => { const s = pickBal(arr, r, used, avoid); used.set(s, (used.get(s) || 0) + 1); return s; };
+  for (const ev of evalsOf(c)) {
+    const P = PHR[ev.id]; if (!P) continue;
+    const en = entryOf(c, st.id, ev);
+    if (en && en.absent) continue;
+    const got = ev.items.map(it => [it, itemPts(it, en, st)]).filter(([, p]) => p != null);
+    if (!got.length) continue;
+    const sum = got.reduce((a, [, p]) => a + p, 0), mx = got.reduce((a, [it]) => a + it.max, 0);
+    gotP += sum; gotM += mx;
+    parts.push({ t: take(P.intro), pri: 4 });
+    for (const [it, p] of got) if (P[it.id]) parts.push({ t: take(P[it.id][lvOf(p, it.max)]), pri: it.id === "und" || it.id === "att" ? 2 : 1 });
+    if (P.outro) parts.push({ t: take(P.outro[lvOf(sum, mx)]), pri: 5 });
+  }
+  if (parts.length) parts.push({ t: take(CLOSE[lvOf(gotP, gotM)]), pri: 3, close: true });
+  return parts;
+}
+function memoParts(memo) {
+  return String(memo || "").split(/\n+/).map(x => x.trim()).filter(Boolean)
+    .map(x => ({ t: /[.!?]$/.test(x) ? x : x + ".", pri: 0 }));
+}
+// 메모는 마무리 문장 앞에 넣고, 1,000Byte를 넘으면 우선순위가 낮은 문장부터 뺌 (메모는 빼지 않음)
+// AI가 메모를 바꾼 문장이 지금 메모와 같은 메모에서 나왔으면 그 문장을, 아니면 메모 원문을 씀
+const memoReady = (memo, memoAI) => !!(memoAI && memoAI.text && memoAI.src === String(memo || "").trim());
+function assemble(parts, memo, memoAI) {
+  const list = (parts || []).filter(x => !x.close);
+  const close = (parts || []).filter(x => x.close);
+  const mp = memoReady(memo, memoAI) ? sentences(memoAI.text).map(t => ({ t, pri: 0 })) : memoParts(memo);
+  const all = list.concat(mp, close);
+  const join = () => all.map(x => x.t).join(" ");
+  let text = join();
+  while (neisBytes(text) > RM_BYTES) {
+    let k = -1; all.forEach((x, i) => { if (x.pri > 0 && (k < 0 || x.pri >= all[k].pri)) k = i; });
+    if (k < 0) break;
+    all.splice(k, 1); text = join();
+  }
+  return text;
+}
+const isEdited = rm => rm.auto === false || (rm.text != null && rm.auto !== true);
+function usedMap(c, exceptSid) {
+  const used = new Map();
+  for (const s of c.students || []) {
+    if (s.id === exceptSid) continue;
+    const rm = (c.remarks || {})[s.id]; if (!rm) continue;
+    const list = isEdited(rm) ? sentences(rm.text) : (rm.parts || []).map(x => x.t);
+    list.forEach(t => used.set(t, (used.get(t) || 0) + 1));
+  }
+  return used;
+}
+// 점수가 생기거나 바뀐 학생만 새로 만듦 (직접 고친 문장은 건드리지 않음)
+function ensureRemarks(c) {
+  c.remarks = c.remarks || {};
+  let changed = false;
+  for (const st of c.students || []) {
+    const rm = c.remarks[st.id] || {};
+    if (isEdited(rm)) continue;
+    const sig = sigOf(c, st);
+    if (rm.parts && rm.sig === sig) continue;
+    const parts = genParts(c, st, rng((Math.random() * 4294967296) >>> 0), usedMap(c, st.id), null);
+    c.remarks[st.id] = { auto: true, sig, parts, memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+    changed = true;
+  }
+  return changed;
+}
+function regenRemark(c, st) {
+  c.remarks = c.remarks || {};
+  const rm = c.remarks[st.id] || {};
+  const avoid = new Set(isEdited(rm) ? sentences(rm.text) : (rm.parts || []).map(x => x.t));
+  const parts = genParts(c, st, rng((Math.random() * 4294967296) >>> 0), usedMap(c, st.id), avoid);
+  c.remarks[st.id] = { auto: true, sig: sigOf(c, st), parts, memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+}
+// 반 전체 다시 만들기: 대상 학생의 기존 문장을 비우고, 이전 문장은 피하면서 한 명씩 새로 만듦
+function regenAll(c, includeEdited) {
+  c.remarks = c.remarks || {};
+  const targets = (c.students || []).filter(st => includeEdited || !isEdited(c.remarks[st.id] || {}));
+  const avoid = {};
+  for (const st of targets) {
+    const rm = c.remarks[st.id] || {};
+    avoid[st.id] = new Set(isEdited(rm) ? sentences(rm.text) : (rm.parts || []).map(x => x.t));
+    c.remarks[st.id] = { auto: true, sig: null, parts: [], memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+  }
+  for (const st of targets) {
+    const r = c.remarks[st.id];
+    r.parts = genParts(c, st, rng((Math.random() * 4294967296) >>> 0), usedMap(c, st.id), avoid[st.id]);
+    r.sig = sigOf(c, st);
+  }
+  return targets.length;
+}
+function connSheet(s) {
+  const cfg = apiCfg() || {};
+  return `<div class="sh-head"><h3>구글 시트 연결</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body">
+      <p class="muted" style="margin:0;font-size:13px">Apps Script 웹 앱 주소와 비밀 키를 넣으면 점수, 세특, 업무가 내 구글 시트에 저장돼요. 기기마다 한 번씩 넣어 주세요. 키는 이 기기의 브라우저에만 저장돼요.</p>
+      <div class="field"><label for="c-url">웹 앱 주소</label><input class="txt" id="c-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(cfg.url || "")}" autocomplete="off"></div>
+      <div class="field"><label for="c-key">비밀 키</label><input class="txt" id="c-key" type="password" placeholder="Code.gs의 API_KEY" value="${esc(cfg.key || "")}" autocomplete="off"></div>
+      ${s.msg ? `<p style="margin:0;font-size:13px;color:${s.ok ? "var(--good)" : "var(--bad)"}">${esc(s.msg)}</p>` : ""}
+      <p class="muted" style="margin:0;font-size:12px">지금 상태: ${S.mode === "sheet" ? "구글 시트에 저장 중" : "이 기기 브라우저에만 저장 중"}</p>
+    </div>
+    <div class="sh-foot">${apiCfg() ? `<button class="btn danger" data-act="conn-off">연결 끊기</button>` : ""}<span class="sp"></span><button class="btn primary" data-act="conn-save">${s.busy ? "확인 중…" : "연결 확인 후 저장"}</button></div>`;
+}
+function regenAllSheet() {
+  const c = cls(); if (!c) return "";
+  const studs = c.students || [];
+  const edited = studs.filter(st => isEdited((c.remarks || {})[st.id] || {})).length;
+  return `<div class="sh-head"><h3>${esc(c.name)} 세특 다시 만들기</h3></div>
+    <div class="sh-body"><p style="margin:0">반 학생들의 자동 문장을 모두 새로 만들어요. 학생끼리, 그리고 지금 문장과 최대한 겹치지 않게 골라요. 관찰 메모와 AI가 만든 메모 문장은 그대로 유지돼요.</p>
+    ${edited ? `<p class="muted" style="margin:0;font-size:13px">직접 고친 학생이 ${edited}명 있어요. 이 학생들까지 바꿀지 골라 주세요.</p>` : ""}</div>
+    <div class="sh-foot"><button class="btn" data-act="close">취소</button><span class="sp"></span>
+      ${edited ? `<button class="btn danger" data-act="regen-all" data-all="1">직접 고친 ${edited}명까지 모두</button>` : ""}
+      <button class="btn primary" data-act="regen-all" data-all="0">${edited ? `자동 문장만 (${studs.length - edited}명)` : `${studs.length}명 다시 만들기`}</button></div>`;
+}
+function remarkOf(c, st) {
+  const rm = (c.remarks || {})[st.id] || {};
+  const base = { memo: rm.memo || "", ready: memoReady(rm.memo, rm.memoAI) };
+  if (isEdited(rm)) return { ...base, text: rm.text || "", edited: true, stale: !!rm.sig && rm.sig !== sigOf(c, st) };
+  return { ...base, text: assemble(rm.parts, rm.memo, rm.memoAI), edited: false };
+}
+
+/* 관찰 메모 → AI 세특 문장 (학생 이름은 보내지 않음) */
+let samplePromise = null;
+const getSample = () => samplePromise || (samplePromise = (window.claude && typeof window.claude.use === "function") ? window.claude.use("sample").catch(() => null) : Promise.resolve(null));
+const AI = { busy: new Set(), err: {}, off: false };
+const LV_WORD = { 3: "상", 2: "중", 1: "하" };
+function memoPrompt(c, st, memo, others) {
+  const ctx = evalsOf(c).map(ev => {
+    const en = entryOf(c, st.id, ev);
+    if (en && en.absent) return `- ${ev.tag} ${ev.name}: 미응시`;
+    const items = ev.items.map(it => { const p = itemPts(it, en, st); return p == null ? null : `${it.name} ${LV_WORD[lvOf(p, it.max)]}`; }).filter(Boolean);
+    return items.length ? `- ${ev.tag} ${ev.name}: ${items.join(", ")}` : null;
+  }).filter(Boolean).join("\n") || "- 아직 점수 없음";
+  return `당신은 중학교 체육 교사의 학교생활기록부 '교과 세부능력 및 특기사항' 작성을 돕습니다.
+교사의 관찰 메모를 세특에 넣을 문장으로 바꿔 주세요.
+
+[학생 정보] ${c.grade}학년, 과목 체육
+[이번 학기 수행평가 항목별 수준]
+${ctx}
+
+[교사 관찰 메모]
+${memo}
+
+[이미 세특에 들어간 다른 문장 — 같은 내용이나 표현을 반복하지 말 것]
+${others.map(t => "- " + t).join("\n") || "- 없음"}
+
+[작성 규칙 — 2026 학교생활기록부 기재요령]
+1. 메모에 적힌 사실만 사용하고, 메모에 없는 행동이나 결과를 지어내지 말 것.
+2. 1~2문장, 합계 한글 150자 이내.
+3. 문장은 명사형 어미로 끝낼 것 (예: ~함. ~임. ~보임. ~돋보임.).
+4. 체육 교과의 성취수준 특성, 실기능력, 교과적성, 학습활동 참여도 및 태도가 드러나도록 구체적으로 쓸 것.
+5. 학생 이름, 다른 학생 이름, 점수, 등수를 쓰지 말 것.
+6. 교내외 대회와 수상, 자격증, 인증시험, 공인어학시험, 특정 기관명이나 상호명, 강사명, 부모의 직업이나 지위, 해외 활동, 장학금은 메모에 있더라도 쓰지 말 것.
+7. 따옴표, 괄호, 번호, 기호 같은 특수문자를 쓰지 말 것.
+
+다음 JSON 형식으로만 답하세요: {"sentences": ["문장1", "문장2"]}`;
+}
+const cleanSentence = s => {
+  s = String(s || "").replace(/[“”"'‘’「」『』()\[\]{}<>※★☆•·\-–—#*~^|\\/]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  return /[.!?]$/.test(s) ? s.replace(/[!?]$/, ".") : s + ".";
+};
+const AI_MSG = {
+  rate_limited: "AI 사용이 잠시 몰렸어요. 조금 뒤에 다시 눌러 주세요.",
+  session_expired: "로그인이 만료됐어요. 다시 로그인한 뒤 눌러 주세요.",
+  refused: "이 메모로는 문장을 만들 수 없었어요. 메모를 조금 바꿔 주세요.",
+  invalid_json: "AI 답을 읽지 못했어요. 다시 눌러 주세요.",
+  empty_completion: "AI 답이 비어 있었어요. 다시 눌러 주세요.",
+};
+async function convertMemo(cid, sid, fresh) {
+  const c0 = S.classes[cid]; if (!c0) return;
+  const st = (c0.students || []).find(s => s.id === sid); if (!st) return;
+  const rm0 = (c0.remarks || {})[sid] || {};
+  const memo = String(rm0.memo || "").trim(); if (!memo || AI.busy.has(sid)) return;
+  const sample = await getSample();
+  if (!sample) { AI.off = true; render(); return; }
+  AI.busy.add(sid); delete AI.err[sid]; render();
+  try {
+    const others = isEdited(rm0) ? [] : (rm0.parts || []).map(x => x.t);
+    const out = await sample.json(memoPrompt(c0, st, memo, others), { modelTier: "default", effort: "low", cache: fresh ? false : true });
+    const arr = (Array.isArray(out && out.sentences) ? out.sentences : Array.isArray(out) ? out : []).map(cleanSentence).filter(Boolean).slice(0, 3);
+    if (!arr.length) throw { code: "empty_completion" };
+    const c = S.classes[cid]; if (!c) return;
+    c.remarks = c.remarks || {};
+    const cur = c.remarks[sid] = c.remarks[sid] || {};
+    if (String(cur.memo || "").trim() !== memo) return;   // 그사이 메모가 바뀜
+    cur.memoAI = { src: memo, text: arr.join(" ") };
+    persist(cid);
+  } catch (e) {
+    const code = e && e.code;
+    if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) AI.off = true;
+    else if (code !== "cancelled") AI.err[sid] = AI_MSG[code] || "AI 연결에 문제가 있었어요. 다시 눌러 주세요.";
+  } finally {
+    AI.busy.delete(sid); render();
+  }
+}
+function memoStatus(st, r) {
+  if (!r.memo.trim()) return `<span class="hint">관찰한 내용을 짧게 적으면 AI가 기재요령에 맞는 세특 문장으로 바꿔 넣어요. 예: 서브 토스 요령을 친구에게 알려 줌</span>`;
+  if (AI.busy.has(st.id)) return `<span class="hint ai busy">AI가 메모를 세특 문장으로 바꾸고 있어요…</span>`;
+  const note = r.edited ? " 직접 고친 문장에는 자동으로 들어가지 않으니 ‘다시 만들기’를 누르세요." : "";
+  if (AI.off) return `<span class="hint">이 화면에서는 AI를 쓸 수 없어 메모 원문이 들어가요.${note}</span>`;
+  const err = AI.err[st.id] ? `<span class="hint err">${esc(AI.err[st.id])}</span>` : "";
+  if (r.ready) return `${err}<span class="hint ai">메모를 세특 문장으로 바꿔 넣었어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI로 다시 쓰기</button>`;
+  return `${err}<span class="hint">아직 메모 원문 상태예요. 메모 칸을 벗어나면 AI가 바꿔 넣어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI 문장 만들기</button>`;
+}
+function countText(text) {
+  const b = neisBytes(text);
+  return { html: `${text.length}자 · ${b.toLocaleString()} / ${RM_BYTES.toLocaleString()}Byte`, cls: b > RM_MAX_BYTES ? "cnt over" : b > RM_BYTES ? "cnt warn" : "cnt" };
+}
+function scoreChips(c, st) {
+  const parts = evalsOf(c).map(ev => {
+    const t = evalTotal(c, st, ev);
+    const v = t.absent ? `${t.total}<span class="muted"> 미응시</span>` : t.done ? t.total : t.n ? `${t.total}<span class="muted">…</span>` : "–";
+    return `<span class="sc">${ev.tag} <b>${v}</b>/${ev.max}</span>`;
+  });
+  const sem = semester(c, st);
+  if (sem) parts.push(`<span class="sc">합계 <b>${sem.total}</b> <span class="grade ${sem.grade}">${sem.grade}</span></span>`);
+  return parts.join("");
+}
+function remarksView(c) {
+  if (ensureRemarks(c)) persist(c.id);
+  const studs = c.students || [];
+  const texts = studs.map(st => remarkOf(c, st));
+  const seen = new Map();
+  texts.forEach(x => sentences(x.text).forEach(s => seen.set(s, (seen.get(s) || 0) + 1)));
+  const allS = [...seen.values()].reduce((a, b) => a + b, 0);
+  const dupS = [...seen.values()].filter(n => n > 1).reduce((a, b) => a + b, 0);
+  const cards = studs.map((st, i) => {
+    const { text, edited, stale, memo } = texts[i];
+    const cnt = countText(text);
+    return `<article class="rm">
+      <div class="hd"><span class="no">${esc(st.no)}</span><span class="nm">${esc(st.name)}</span>${edited ? `<span class="tag">직접 수정</span>` : ""}${stale ? `<span class="tag">점수 바뀜</span>` : ""}<div class="scores">${scoreChips(c, st)}</div></div>
+      <div class="field"><label for="mm-${st.id}">관찰 메모</label>
+        <textarea class="memo" id="mm-${st.id}" data-sid="${st.id}" placeholder="예: 모둠 친구에게 서브 토스 요령을 알려 주며 함께 연습함">${esc(memo)}</textarea>
+        <div class="memost" id="ms-${st.id}">${memoStatus(st, texts[i])}</div></div>
+      <div class="field"><label for="rm-${st.id}">세부능력 및 특기사항</label>
+      <textarea id="rm-${st.id}" data-sid="${st.id}" placeholder="수행평가 점수를 입력하면 문장이 만들어져요.">${esc(text)}</textarea></div>
+      <div class="ft"><span class="${cnt.cls}" id="rc-${st.id}">${cnt.html}</span>
+        <button class="btn" data-act="rm-regen" data-sid="${st.id}">다시 만들기</button>
+        <button class="btn primary" data-act="rm-copy" data-sid="${st.id}">복사</button></div>
+    </article>`;
+  }).join("");
+  const dupInfo = allS ? `겹치는 문장 ${Math.round(dupS / allS * 100)}%` : "";
+  return `<div class="progress"><span>${esc(c.name)} · ${studs.length}명 · 과목: 체육${dupInfo ? ` · ${dupInfo}` : ""}</span><span class="actions" style="margin:0"><button class="btn" data-act="rm-regenall">반 전체 다시 만들기</button><button class="btn" data-act="rm-copyall">반 전체 복사</button></span></div>
+    <div class="rmcards">${cards || `<p class="muted">학생이 없어요.</p>`}</div>
+    <p class="note-box">문장은 수행평가 항목별 점수 수준(상·중·하)에 맞춰 평가계획의 성취기준을 바탕으로 만들고, 같은 반 학생끼리 가장 적게 쓰인 문장을 골라 겹침을 줄여요. 기재요령에 따라 명사형 어미로 끝내고 1,000Byte 안으로 맞춥니다(NEIS 한도 1,500Byte). 관찰 메모는 줄이지 않고 그대로 들어가요. 직접 고친 문장은 그대로 저장돼요. NEIS에 넣기 전에 학생의 실제 모습과 맞는지 꼭 확인하세요.</p>`;
+}
+
+/* ───────── 시트(모달) ───────── */
+function renderLayer() {
+  const L = $("#layer");
+  if (!S.sheet) { L.innerHTML = ""; return; }
+  const s = S.sheet;
+  let html = "";
+  if (s.type === "student") html = studentSheet(s);
+  else if (s.type === "class") html = classSheet(s);
+  else if (s.type === "manage") html = manageSheet(s);
+  else if (s.type === "confirm") html = confirmSheet(s);
+  else if (s.type === "copy") html = copySheet(s);
+  else if (s.type === "task") html = taskSheet(s);
+  else if (s.type === "regen-all") html = regenAllSheet();
+  else if (s.type === "conn") html = connSheet(s);
+  L.innerHTML = `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+}
+
+function studentSheet(s) {
+  const c = cls(); if (!c) return "";
+  const ev = curEval(c);
+  const studs = c.students || [];
+  const i = studs.findIndex(x => x.id === s.sid);
+  const st = studs[i]; if (!st) return "";
+  const en = entryOf(c, st.id, ev);
+  const t = evalTotal(c, st, ev);
+  const absent = en && en.absent;
+  const cards = ev.items.map(item => {
+    const e = en && en.items && en.items[item.id];
+    const p = itemPts(item, en, st);
+    let inner = "";
+    if (item.kind === "level") {
+      inner = `<div class="ptsrow">${item.levels.map(([pt, l]) => `<button data-act="lv" data-sid="${st.id}" data-item="${item.id}" data-p="${pt}" aria-pressed="${e && e.pts === pt}">${pt} <span style="font-family:var(--f-body);font-weight:500;font-size:12px">${esc(l)}</span></button>`).join("")}</div>`;
+    } else {
+      let head = "";
+      if (item.variants) { const v = varOf(item, e); head += `<div class="ptsrow"><span class="lab">도구</span>${item.variants.map(x => `<button data-act="rowvar" data-sid="${st.id}" data-item="${item.id}" data-v="${x.id}" aria-pressed="${x.id === v.id}">${x.label}</button>`).join("")}</div>`; }
+      if (item.bySex) head += `<div class="ptsrow"><span class="lab">성별</span>${["남", "여"].map(x => `<button data-act="setsex" data-sid="${st.id}" data-v="${x}" aria-pressed="${st.sex === x}">${x}</button>`).join("")}</div>`;
+      if (item.trials) {
+        const te = e && !e.manual ? e : null;
+        const ts = trialStat(item, te);
+        inner = head + trialsHTML(item, te, st, true) +
+          `<div class="tstat"><span>○ <b class="num">${ts.succ}</b></span><span>× <b class="num">${ts.fail}</b></span><span class="muted">${ts.done ? `${ts.n}${item.unit} 중 ${ts.succ}${item.unit} 성공` : `남은 ${ts.n - ts.filled}칸`}</span></div>` +
+          `<div class="qbig"><button class="qb s" data-act="mkadd" data-v="1" data-sid="${st.id}" data-item="${item.id}">○ 성공</button><button class="qb f" data-act="mkadd" data-v="0" data-sid="${st.id}" data-item="${item.id}">× 실패</button></div>` +
+          `<div class="ptsrow"><button data-act="mkundo" data-sid="${st.id}" data-item="${item.id}" ${ts.filled ? "" : "disabled"}>↶ 마지막 칸 지우기</button><button data-act="mkfill" data-sid="${st.id}" data-item="${item.id}" ${ts.filled && !ts.done ? "" : "disabled"}>남은 칸 모두 ×</button></div>`;
+      } else if (item.buttons) {
+        const cur = e && !e.manual ? e.raw : null;
+        inner = head + `<div class="grid-btn">${Array.from({ length: item.rawMax + 1 }, (_, n) => `<button data-act="rawbtn" data-sid="${st.id}" data-item="${item.id}" data-v="${n}" aria-pressed="${cur === n}">${n}</button>`).join("")}</div>`;
+      } else {
+        inner = head + `<div class="ptsrow"><input class="raw" style="width:140px" id="d-${item.id}" data-sid="${st.id}" data-item="${item.id}" value="${esc(e && !e.manual ? fmtRaw(item, e.raw) : "")}" placeholder="${item.unit}" inputmode="decimal" enterkeyhint="done" autocomplete="off" aria-label="${esc(item.name)} 기록"><span class="unit">${item.unit}</span></div>`;
+      }
+    }
+    const opts = itemOptions(item);
+    const manual = item.kind === "level" ? "" : `<div class="ptsrow"><span class="lab">점수 직접 선택</span>${opts.map(o => `<button data-act="manual" data-sid="${st.id}" data-item="${item.id}" data-p="${o}" aria-pressed="${!!(e && e.manual && e.pts === o)}">${o}</button>`).join("")}${e ? `<button data-act="clear" data-sid="${st.id}" data-item="${item.id}">지우기</button>` : ""}</div>`;
+    const ptsCls = p == null ? "pts" : p === item.max ? "pts full" : "pts on";
+    return `<div class="card"><div class="ttl"><div><strong>${esc(item.name)}</strong> <span class="note num">/${item.max}</span><div class="note">${esc(item.variants ? varOf(item, e).desc : item.desc)}</div></div><span class="${ptsCls}" id="dp-${item.id}">${p == null ? "–" : p}</span></div>${inner}${manual}</div>`;
+  }).join("");
+  return `<div class="sh-head"><h3><span class="num">${esc(st.no)}번</span>${esc(st.name)}${st.sex ? `<span class="muted" style="font-size:13px">${esc(st.sex)}</span>` : ""}</h3>
+      <button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body">
+      <div class="card"><div class="ttl"><div><strong>${esc(ev.tag)} ${esc(ev.name)}</strong></div>
+        <div class="bigtotal"><b>${t.absent || t.n ? t.total : "–"}</b><span>/ ${ev.max}${t.done ? "" : " · 입력 중"}</span></div></div>
+        <label class="toggle"><input type="checkbox" id="absent" data-sid="${st.id}" ${absent ? "checked" : ""}> 미응시 (기본점수 −1 = ${ev.base - 1}점)</label></div>
+      ${absent ? "" : cards}
+    </div>
+    <div class="sh-foot"><button class="btn" data-act="nav" data-d="-1" ${i <= 0 ? "disabled" : ""}>← 이전</button><span class="sp muted" style="text-align:center;font-size:13px">${i + 1} / ${studs.length}</span><button class="btn primary" data-act="nav" data-d="1" ${i >= studs.length - 1 ? "disabled" : ""}>다음 →</button></div>`;
+}
+
+function classSheet(s) {
+  const editing = s.id && S.classes[s.id];
+  const parsed = parseRoster(s.text || "");
+  const g = s.grade || 1;
+  return `<div class="sh-head"><h3>${editing ? "명렬표 수정" : "반 추가"}</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body">
+      <div class="two">
+        <div class="field"><label for="f-grade">학년</label><select id="f-grade" ${editing ? "disabled" : ""}><option value="1" ${g == 1 ? "selected" : ""}>1학년</option><option value="2" ${g == 2 ? "selected" : ""}>2학년</option></select></div>
+        <div class="field"><label for="f-num">반</label><select id="f-num">${Array.from({ length: g == 1 ? 11 : 12 }, (_, n) => `<option value="${n + 1}" ${(s.num || 1) == n + 1 ? "selected" : ""}>${n + 1}반</option>`).join("")}</select></div>
+      </div>
+      <div class="field"><label for="f-text">명렬표</label>
+        <span class="hint">엑셀에서 번호·이름·성별 열을 복사해 붙여넣으세요. 한 줄에 한 명, 성별은 남/여 (없어도 돼요). 학번(10315)은 끝 두 자리를 번호로 씁니다.</span>
+        <textarea id="f-text" placeholder="1	김민준	남&#10;2	이서연	여&#10;3	박도윤	남">${esc(s.text || "")}</textarea></div>
+      <div class="field"><label for="f-file">또는 파일에서 불러오기</label><input type="file" id="f-file" accept=".xlsx,.xls,.csv,.txt"><span class="hint">엑셀(.xlsx)·CSV 파일의 첫 번째 시트를 읽어요.</span></div>
+      <p class="preview" id="f-prev">${previewText(parsed)}</p>
+      ${editing ? `<p class="muted" style="font-size:12px;margin:0">번호와 이름이 같은 학생은 입력된 점수가 그대로 남아요. 명렬표에서 빠진 학생의 점수는 지워집니다.</p>` : ""}
+    </div>
+    <div class="sh-foot">${editing ? `<button class="btn danger" data-act="delcls">반 삭제</button>` : ""}<span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="savecls">${editing ? "저장" : "반 만들기"}</button></div>`;
+}
+function previewText(list) {
+  if (!list.length) return "아직 읽은 학생이 없어요.";
+  const m = list.filter(x => x.sex === "남").length, f = list.filter(x => x.sex === "여").length;
+  return `<b>${list.length}명</b> 읽음 (남 ${m} · 여 ${f}${list.length - m - f ? ` · 성별 미정 ${list.length - m - f}` : ""}) — ${list.slice(0, 4).map(x => esc(`${x.no} ${x.name}`)).join(", ")}${list.length > 4 ? " …" : ""}`;
+}
+
+function manageSheet() {
+  const c = cls(); if (!c) return "";
+  return `<div class="sh-head"><h3>${esc(c.name)} 관리</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body">
+      <div class="sec-title">명렬표</div>
+      <div class="card"><div class="ttl"><span>${(c.students || []).length}명 등록됨</span><button class="btn" data-act="editcls">명렬표 수정</button></div></div>
+      <div class="sec-title">내보내기</div>
+      <div class="card">
+        <div class="actions" style="margin:0">
+          <button class="btn" data-act="export-csv">이 반 CSV</button>
+          <button class="btn" data-act="export-all">전체 반 CSV</button>
+          <button class="btn" data-act="copy-tsv">표 복사</button>
+        </div>
+        <span class="muted" style="font-size:12px">CSV는 엑셀에서 바로 열려요. 원기록과 환산 점수가 함께 들어갑니다.</span>
+      </div>
+      <div class="sec-title">백업</div>
+      <div class="card">
+        <div class="actions" style="margin:0"><button class="btn" data-act="backup">전체 백업 저장 (.json)</button>
+        <label class="btn" for="f-restore" style="display:inline-flex;align-items:center">백업 불러오기</label><input type="file" id="f-restore" accept=".json" hidden></div>
+        <span class="muted" style="font-size:12px">${S.mode === "sheet" ? "점수와 세특은 구글 시트에 저장돼요. 시트에는 반마다 탭이 생겨서 점수표와 세특을 바로 볼 수 있어요." : S.mode === "cloud" ? "점수는 내 계정에 저장돼 휴대폰·패드·PC 어디서 열어도 같아요. 다른 사람과 링크를 공유해도 내 점수는 보이지 않아요." : "지금은 이 기기의 브라우저에만 저장돼요. 기기를 바꾸기 전에 백업을 저장하세요."}</span>
+      </div>
+    </div>`;
+}
+function confirmSheet(s) {
+  return `<div class="sh-head"><h3>${esc(s.title)}</h3></div><div class="sh-body"><p style="margin:0">${esc(s.body)}</p></div>
+    <div class="sh-foot"><span class="sp"></span><button class="btn" data-act="close">취소</button><button class="btn danger" data-act="confirm-yes">${esc(s.yes)}</button></div>`;
+}
+function copySheet(s) {
+  return `<div class="sh-head"><h3>복사하기</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body"><p class="muted" style="margin:0;font-size:13px">자동 복사가 막혀 있어요. 아래 글상자를 길게 눌러 전체 선택 후 복사하세요.</p><textarea class="copybox" id="copybox" readonly>${esc(s.text)}</textarea></div>`;
+}
+
+/* ───────── 명렬표 읽기 ───────── */
+const HEADER = /^(번호|이름|성명|성별|학번|학년|반|비고|no\.?|name)$/i;
+function parseRoster(text) {
+  const out = [], seen = new Set();
+  String(text).split(/\r?\n/).forEach(line => {
+    const toks = line.split(/[\t,;|]+|\s+/).map(t => t.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    if (!toks.length || toks.every(t => HEADER.test(t))) return;
+    let no = null, name = null, sex = null;
+    for (const t of toks) {
+      if (HEADER.test(t)) continue;
+      if (/^(남|남자|M|m|male)$/.test(t)) { sex = "남"; continue; }
+      if (/^(여|여자|F|f|female)$/.test(t)) { sex = "여"; continue; }
+      if (/^\d{4,5}$/.test(t)) { no = +t.slice(-2); continue; }
+      if (/^\d{1,2}$/.test(t)) { no = +t; continue; }
+      if (!name && /^[가-힣A-Za-z][가-힣A-Za-z·.\-]{0,19}$/.test(t)) name = t;
+    }
+    if (!name) return;
+    if (no == null) no = out.length + 1;
+    const key = no + "|" + name;
+    if (seen.has(key)) return; seen.add(key);
+    out.push({ no, name, sex });
+  });
+  return out.sort((a, b) => a.no - b.no);
+}
+let xlsxLoading = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxLoading = xlsxLoading || new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => ok(window.XLSX); s.onerror = () => { xlsxLoading = null; bad(new Error("load")); };
+    document.head.appendChild(s);
+  });
+}
+async function readRosterFile(file) {
+  if (/\.(xlsx|xls)$/i.test(file.name)) {
+    const X = await loadXLSX();
+    const wb = X.read(await file.arrayBuffer(), { type: "array" });
+    return X.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: "\t" });
+  }
+  return await file.text();
+}
+
+/* ───────── 내보내기 ───────── */
+function tableRows(c) {
+  const evs = evalsOf(c);
+  const head = ["반", "번호", "이름", "성별"];
+  evs.forEach(ev => { ev.items.forEach(it => { if (it.kind === "num") head.push(`${ev.tag} ${it.short} 기록`); head.push(`${ev.tag} ${it.short}(${it.max})`); }); head.push(`${ev.tag} 합계(${ev.max})`); });
+  head.push("학기 합계(100)", "성취도");
+  const rows = (c.students || []).map(st => {
+    const r = [c.name, st.no, st.name, st.sex || ""];
+    evs.forEach(ev => {
+      const en = entryOf(c, st.id, ev); const t = evalTotal(c, st, ev);
+      ev.items.forEach(it => {
+        const e = en && en.items && en.items[it.id];
+        let rec = "";
+        if (t.absent) rec = "미응시";
+        else if (e && e.manual) rec = "직접";
+        else if (e && it.trials && Array.isArray(e.marks)) { const ts = trialStat(it, e); rec = `${ts.succ}/${ts.n} ${ts.marks.map(x => x === 1 ? "○" : x === 0 ? "×" : "·").join("")}`; }
+        else if (e && e.raw != null) rec = fmtRaw(it, e.raw);
+        if (rec && it.variants && e && !t.absent) rec += `(${varOf(it, e).label})`;
+        if (it.kind === "num") r.push(rec);
+        const p = t.absent ? "" : itemPts(it, en, st); r.push(p == null ? "" : p);
+      });
+      r.push(t.done ? t.total : "");
+    });
+    const sem = semester(c, st); r.push(sem ? sem.total : "", sem ? sem.grade : "");
+    return r;
+  });
+  return [head, rows];
+}
+const csvCell = v => { v = String(v ?? ""); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+async function saveFile(filename, data) {
+  let dl = null;
+  try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch {}
+  if (dl) {
+    try { await dl.save({ filename, data }); toast("파일을 저장했어요."); }
+    catch (e) { if (e && e.code !== "declined") toast("파일을 저장하지 못했어요."); }
+    return;
+  }
+  try {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: "text/plain;charset=utf-8" }));
+    a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  } catch { toast("이 화면에서는 파일 저장이 안 돼요. ‘표 복사’를 쓰세요."); }
+}
+function exportCSV(list, filename) {
+  let lines = [];
+  list.forEach((c, i) => { const [h, rows] = tableRows(c); if (i === 0 || evalsOf(c) !== evalsOf(list[i - 1])) { if (i) lines.push(""); lines.push(h.map(csvCell).join(",")); } rows.forEach(r => lines.push(r.map(csvCell).join(","))); });
+  saveFile(filename, "﻿" + lines.join("\r\n"));
+}
+
+/* ───────── 토스트 ───────── */
+let toastT;
+function toast(msg) {
+  let t = $("#toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2200);
+}
+
+/* ───────── 동작 ───────── */
+function updateRowPts(c, ev, item, st) {
+  const en = entryOf(c, st.id, ev); const p = itemPts(item, en, st);
+  for (const id of ["pt-" + st.id, "dp-" + item.id]) {
+    const el = document.getElementById(id); if (!el) continue;
+    if (id.startsWith("dp-") && (!S.sheet || S.sheet.sid !== st.id)) continue;
+    el.className = p == null ? "pts" : p === item.max ? "pts full" : "pts on";
+    el.textContent = p == null ? "–" : p;
+  }
+}
+function commitInput(el) {
+  const c = cls(); if (!c) return false;
+  const ev = curEval(c); const item = ev.items.find(i => i.id === el.dataset.item);
+  const st = (c.students || []).find(s => s.id === el.dataset.sid);
+  if (!item || !st) return false;
+  const r = parseRaw(item, el.value);
+  if (r.err) { el.classList.add("bad"); toast(`${st.name}: ${r.err}`); return false; }
+  el.classList.remove("bad");
+  const en = entryOf(c, st.id, ev); const old = en && en.items && en.items[item.id];
+  if (r.empty) { if (old && !old.manual) setItem(c, st.id, ev, item.id, null); }
+  else {
+    const patch = { raw: r.v };
+    if (item.variants) patch.v = varOf(item, old).id;
+    if (!old || old.raw !== r.v || old.manual || old.v !== patch.v) setItem(c, st.id, ev, item.id, patch);
+  }
+  return true;
+}
+
+document.addEventListener("input", e => {
+  const el = e.target;
+  if (el.classList && el.classList.contains("raw")) {
+    const c = cls(); if (!c) return;
+    const ev = curEval(c); const item = ev.items.find(i => i.id === el.dataset.item);
+    const st = (c.students || []).find(s => s.id === el.dataset.sid);
+    const r = parseRaw(item, el.value);
+    el.classList.toggle("bad", !!r.err);
+    const target = el.id.startsWith("d-") ? document.getElementById("dp-" + item.id) : document.getElementById("pt-" + st.id);
+    if (target) {
+      let p = null;
+      if (r.v != null && !(item.bySex && !st.sex)) p = item.variants ? varOf(item, (entryOf(c, st.id, ev)?.items || {})[item.id]).rule(r.v) : item.rule(r.v, { sex: st.sex });
+      target.className = p == null ? "pts" : p === item.max ? "pts full" : "pts on";
+      target.textContent = p == null ? "–" : p;
+    }
+  } else if (el.id && el.id.startsWith("rm-")) {
+    const c = cls(); if (!c) return;
+    const sid = el.dataset.sid;
+    const st = (c.students || []).find(s => s.id === sid); if (!st) return;
+    c.remarks = c.remarks || {};
+    c.remarks[sid] = { ...(c.remarks[sid] || {}), auto: false, text: el.value, sig: sigOf(c, st) };
+    persist(c.id);
+    const cnt = document.getElementById("rc-" + sid);
+    if (cnt) { const k = countText(el.value); cnt.textContent = k.html; cnt.className = k.cls; }
+  } else if (el.id && el.id.startsWith("mm-")) {
+    const c = cls(); if (!c) return;
+    const sid = el.dataset.sid;
+    const st = (c.students || []).find(s => s.id === sid); if (!st) return;
+    c.remarks = c.remarks || {};
+    const rm = c.remarks[sid] = { ...(c.remarks[sid] || {}), memo: el.value };
+    persist(c.id);
+    if (!isEdited(rm)) {
+      const text = assemble(rm.parts, rm.memo, rm.memoAI);
+      const ta = document.getElementById("rm-" + sid); if (ta) ta.value = text;
+      const cnt = document.getElementById("rc-" + sid); if (cnt) { const k = countText(text); cnt.textContent = k.html; cnt.className = k.cls; }
+    }
+  } else if (el.id === "f-text" && S.sheet) {
+    S.sheet.text = el.value;
+    const pv = $("#f-prev"); if (pv) pv.innerHTML = previewText(parseRoster(el.value));
+  }
+});
+document.addEventListener("change", async e => {
+  const el = e.target;
+  if (el.classList && el.classList.contains("raw")) { if (commitInput(el) && el.id.startsWith("d-")) render(); else if (!el.id.startsWith("d-")) refreshProgress(); return; }
+  if (el.id && el.id.startsWith("mm-")) {
+    const c = cls(); if (!c) return;
+    const rm = (c.remarks || {})[el.dataset.sid] || {};
+    if (String(rm.memo || "").trim() && !memoReady(rm.memo, rm.memoAI)) convertMemo(c.id, el.dataset.sid, false);
+    else render();
+    return;
+  }
+  if (el.id && el.id.startsWith("tk-")) {
+    const t = (S.tasks.items || []).find(x => x.id === el.dataset.tid); if (!t) return;
+    t.done = el.checked; t.doneAt = el.checked ? Date.now() : null;
+    persist(TASKS); render(); toast(el.checked ? "완료한 업무로 옮겼어요." : "진행중으로 되돌렸어요."); return;
+  }
+  if (el.id === "absent") { const c = cls(); setAbsent(c, el.dataset.sid, curEval(c), el.checked); render(); return; }
+  if (el.id === "f-grade" && S.sheet) { S.sheet.grade = +el.value; render(); return; }
+  if (el.id === "f-num" && S.sheet) { S.sheet.num = +el.value; return; }
+  if (el.id === "f-file" && el.files[0] && S.sheet) {
+    try { S.sheet.text = (await readRosterFile(el.files[0])).replace(/\t+$/gm, ""); render(); }
+    catch { toast("파일을 읽지 못했어요. 엑셀에서 복사해 붙여넣어 주세요."); }
+    return;
+  }
+  if (el.id === "f-restore" && el.files[0]) {
+    try {
+      const data = JSON.parse(await el.files[0].text());
+      const list = Array.isArray(data.classes) ? data.classes : [];
+      const tk = data.tasks && Array.isArray(data.tasks.items) ? data.tasks.items : [];
+      if (!list.length && !tk.length) throw 0;
+      list.forEach(k => { if (k && k.id && EVALS[k.grade]) { S.classes[k.id] = k; persist(k.id); } });
+      if (tk.length) {
+        const have = new Set((S.tasks.items || []).map(x => x.id));
+        S.tasks.items = (S.tasks.items || []).concat(tk.filter(x => x && x.id && !have.has(x.id)));
+        persist(TASKS);
+      }
+      S.sheet = null; toast(`반 ${list.length}개, 업무 ${tk.length}건을 불러왔어요.`); render();
+    } catch { toast("백업 파일 형식이 아니에요."); }
+  }
+});
+function refreshProgress() {
+  // 진행률·행 표시만 다시 그리기 (포커스 유지)
+  const c = cls(); if (!c) return;
+  const ev = curEval(c); const cur = S.ui.item[ev.id];
+  const item = ev.items.find(i => i.id === cur); if (!item) return;
+  const prog = document.querySelector(".progress"); if (!prog) return;
+  const studs = c.students || [];
+  const done = studs.filter(st => { const en = entryOf(c, st.id, ev); return (en && en.absent) || itemPts(item, en, st) != null; }).length;
+  const pct = studs.length ? Math.round(done / studs.length * 100) : 0;
+  prog.querySelector("b").textContent = done; prog.querySelector(".bar i").style.width = pct + "%";
+}
+document.addEventListener("keydown", e => {
+  const el = e.target;
+  if (e.key === "Enter" && el.classList && el.classList.contains("raw")) {
+    e.preventDefault();
+    if (!commitInput(el)) return;
+    if (el.id.startsWith("in-")) {
+      refreshProgress();
+      const all = [...document.querySelectorAll("input.raw[id^='in-']")];
+      const nx = all[all.indexOf(el) + 1];
+      if (nx) { nx.focus(); nx.select(); nx.scrollIntoView({ block: "center", behavior: "smooth" }); } else el.blur();
+    } else { el.blur(); render(); }
+  }
+  if (e.key === "Escape" && S.sheet) { S.sheet = null; render(); }
+});
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-act]"); if (!t) return;
+  const act = t.dataset.act;
+  if (act === "scrim") { if (e.target === t && S.sheet && S.sheet.type !== "confirm") { S.sheet = null; render(); } return; }
+  const c = cls();
+  const ev = c && curEval(c);
+  const st = c && t.dataset.sid ? (c.students || []).find(s => s.id === t.dataset.sid) : null;
+  const item = ev && t.dataset.item ? ev.items.find(i => i.id === t.dataset.item) : null;
+  switch (act) {
+    case "page": S.ui.page = t.dataset.id; saveUI(); render(); window.scrollTo({ top: 0 }); break;
+    case "ttab": S.ui.ttab = t.dataset.id; saveUI(); render(); break;
+    case "task-add": {
+      const text = ($("#t-text").value || "").trim();
+      if (!text) { toast("업무내용을 적어 주세요."); $("#t-text").focus(); break; }
+      S.tasks.items = S.tasks.items || [];
+      S.tasks.items.push({ id: rid(), date: $("#t-date").value || today(), due: $("#t-due").value || "", text, done: false, doneAt: null, created: Date.now() });
+      persist(TASKS); S.ui.ttab = "open"; saveUI(); render(); toast("업무를 추가했어요."); break;
+    }
+    case "task-edit": S.sheet = { type: "task", tid: t.dataset.tid }; render(); break;
+    case "task-save": {
+      const tk = S.tasks.items.find(x => x.id === t.dataset.tid); if (!tk) break;
+      const text = ($("#e-text").value || "").trim();
+      if (!text) { toast("업무내용을 적어 주세요."); break; }
+      Object.assign(tk, { date: $("#e-date").value, due: $("#e-due").value, text });
+      persist(TASKS); S.sheet = null; render(); toast("업무를 수정했어요."); break;
+    }
+    case "task-del": {
+      const id = t.dataset.tid;
+      S.sheet = { type: "confirm", title: "업무 삭제", body: "이 업무를 삭제할까요? 되돌릴 수 없어요.", yes: "삭제", run: () => { S.tasks.items = S.tasks.items.filter(x => x.id !== id); persist(TASKS); toast("업무를 삭제했어요."); } };
+      render(); break;
+    }
+    case "rm-regen": {
+      const wasEdited = isEdited((c.remarks || {})[st.id] || {});
+      regenRemark(c, st);
+      persist(c.id); render();
+      toast(wasEdited ? "직접 고친 문장 대신 새 문장을 만들었어요." : "다른 문장으로 다시 만들었어요.");
+      if (String(c.remarks[st.id].memo || "").trim() && !AI.off) convertMemo(c.id, st.id, true);
+      break;
+    }
+    case "conn": if (!inClaude()) { S.sheet = { type: "conn" }; render(); } break;
+    case "conn-save": {
+      const cfg = { url: ($("#c-url").value || "").trim(), key: ($("#c-key").value || "").trim() };
+      if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(cfg.url) || !cfg.key) { S.sheet = { type: "conn", msg: "웹 앱 주소(https://script.google.com/…/exec)와 비밀 키를 모두 넣어 주세요.", ok: false }; render(); break; }
+      S.sheet = { type: "conn", busy: true }; render();
+      try {
+        await apiCall("ping", {}, cfg);
+        ls.set(LS_API, cfg);
+        S.mode = "sheet"; S.saveErr = null;
+        await sheetLoad();
+        S.sheet = null; render(); toast("구글 시트에 연결했어요.");
+      } catch (e) { S.sheet = { type: "conn", msg: e.message, ok: false }; render(); }
+      break;
+    }
+    case "conn-off":
+      try { localStorage.removeItem(LS_API); } catch {}
+      S.mode = "local"; S.classes = ls.get(LS_DATA) || {}; S.tasks = ls.get(LS_TASKS) || { items: [] }; S.saveErr = null;
+      S.sheet = null; render(); toast("연결을 끊었어요. 이제 이 기기에만 저장돼요.");
+      break;
+    case "rm-regenall": S.sheet = { type: "regen-all" }; render(); break;
+    case "regen-all": {
+      const n = regenAll(c, t.dataset.all === "1");
+      persist(c.id); S.sheet = null; render();
+      toast(`${n}명의 세특을 새로 만들었어요.`);
+      break;
+    }
+    case "memo-ai": {
+      const ta = document.getElementById("mm-" + st.id);
+      if (ta) { c.remarks = c.remarks || {}; c.remarks[st.id] = { ...(c.remarks[st.id] || {}), memo: ta.value }; persist(c.id); }
+      convertMemo(c.id, st.id, true);
+      break;
+    }
+    case "rm-copy": {
+      const text = remarkOf(c, st).text;
+      if (!text) { toast("복사할 문장이 없어요. 먼저 수행평가 점수를 입력하세요."); break; }
+      try { await navigator.clipboard.writeText(text); toast(`${st.name} 세특을 복사했어요.`); }
+      catch { S.sheet = { type: "copy", text }; render(); const b = $("#copybox"); if (b) { b.focus(); b.select(); } }
+      break;
+    }
+    case "rm-copyall": {
+      const text = (c.students || []).map(s => [s.no, s.name, remarkOf(c, s).text].join("\t")).join("\n");
+      try { await navigator.clipboard.writeText(text); toast("반 전체를 복사했어요. 엑셀에 붙여넣으면 번호, 이름, 세특 열로 들어가요."); }
+      catch { S.sheet = { type: "copy", text }; render(); const b = $("#copybox"); if (b) { b.focus(); b.select(); } }
+      break;
+    }
+    case "cls": S.ui.cls = t.dataset.id; saveUI(); render(); break;
+    case "ev": S.ui.ev[c.grade] = t.dataset.id; saveUI(); render(); break;
+    case "item": S.ui.item[ev.id] = t.dataset.id; saveUI(); render(); window.scrollTo({ top: 0 }); break;
+    case "add": S.sheet = { type: "class", grade: c ? c.grade : 1, num: 1, text: "" }; render(); break;
+    case "manage": S.sheet = { type: "manage" }; render(); break;
+    case "editcls": S.sheet = { type: "class", id: c.id, grade: c.grade, num: c.num, text: (c.students || []).map(s => [s.no, s.name, s.sex || ""].join("\t").trim()).join("\n") }; render(); break;
+    case "close": S.sheet = null; render(); break;
+    case "open": S.sheet = { type: "student", sid: t.dataset.sid }; render(); break;
+    case "nav": {
+      const studs = c.students || []; const i = studs.findIndex(x => x.id === S.sheet.sid) + +t.dataset.d;
+      if (studs[i]) { S.sheet.sid = studs[i].id; render(); $(".sh-body") && ($(".sh-body").scrollTop = 0); }
+      break;
+    }
+    case "lv": {
+      const en = entryOf(c, st.id, ev); const old = en && en.items && en.items[item.id];
+      const p = +t.dataset.p;
+      setItem(c, st.id, ev, item.id, old && old.pts === p ? null : { pts: p });
+      render(); break;
+    }
+    case "rawbtn": {
+      const en = entryOf(c, st.id, ev); const old = en && en.items && en.items[item.id];
+      const v = +t.dataset.v;
+      if (old && !old.manual && old.raw === v) setItem(c, st.id, ev, item.id, null);
+      else { const patch = { raw: v }; if (item.variants) patch.v = varOf(item, old).id; setItem(c, st.id, ev, item.id, patch); }
+      render(); break;
+    }
+    case "manual": {
+      const en = entryOf(c, st.id, ev); const old = en && en.items && en.items[item.id];
+      const p = +t.dataset.p;
+      setItem(c, st.id, ev, item.id, old && old.manual && old.pts === p ? null : { pts: p, manual: true, ...(old && old.v ? { v: old.v } : {}) });
+      render(); break;
+    }
+    case "mk": case "mkadd": case "mkundo": case "mkfill": {
+      const en = entryOf(c, st.id, ev); const old = en && en.items && en.items[item.id];
+      const ts = trialStat(item, old && !old.manual ? old : null);
+      const m = ts.marks.slice();
+      if (act === "mk") { const k = +t.dataset.k; m[k] = m[k] === null ? 1 : m[k] === 1 ? 0 : null; }
+      else if (act === "mkadd") {
+        const k = m.indexOf(null);
+        if (k < 0) { toast(`${st.name}: ${ts.n}칸을 모두 기록했어요. 칸을 눌러 고칠 수 있어요.`); break; }
+        m[k] = +t.dataset.v;
+      }
+      else if (act === "mkundo") { for (let k = m.length - 1; k >= 0; k--) if (m[k] !== null) { m[k] = null; break; } }
+      else { for (let k = 0; k < m.length; k++) if (m[k] === null) m[k] = 0; }
+      if (m.every(x => x === null)) setItem(c, st.id, ev, item.id, item.variants && old && old.v ? { v: old.v } : null);
+      else { const patch = { marks: m }; if (item.variants) patch.v = varOf(item, old).id; setItem(c, st.id, ev, item.id, patch); }
+      render(); break;
+    }
+    case "clear": setItem(c, st.id, ev, item.id, null); render(); break;
+    case "rowvar": {
+      const en = entryOf(c, st.id, ev); const old = (en && en.items && en.items[item.id]) || {};
+      setItem(c, st.id, ev, item.id, { ...old, v: t.dataset.v });
+      render(); break;
+    }
+    case "defvar": S.ui.variant[item.id] = t.dataset.v; saveUI(); render(); break;
+    case "sex": st.sex = st.sex === "남" ? "여" : "남"; persist(c.id); render(); toast(`${st.name}: ${st.sex}학생으로 설정했어요. 다시 누르면 바뀌어요.`); break;
+    case "setsex": st.sex = t.dataset.v; persist(c.id); render(); break;
+    case "savecls": saveClass(); break;
+    case "delcls": S.sheet = { type: "confirm", title: `${c.name} 삭제`, body: `${c.name}의 명렬표와 입력한 점수가 모두 지워집니다. 되돌릴 수 없어요.`, yes: "삭제", run: () => { removeClass(c.id); S.ui.cls = null; saveUI(); toast("반을 삭제했어요."); } }; render(); break;
+    case "confirm-yes": { const run = S.sheet.run; S.sheet = null; run && run(); render(); break; }
+    case "sample": makeSample(); break;
+    case "export-csv": exportCSV([c], `${c.name} 수행평가.csv`); break;
+    case "export-all": exportCSV(sortedClasses(), `체육 수행평가 전체.csv`); break;
+    case "backup": saveFile(`체육수행평가-백업-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ app: "pe-grader", v: 2, saved: new Date().toISOString(), classes: sortedClasses(), tasks: S.tasks }, null, 1)); break;
+    case "copy-tsv": {
+      const [h, rows] = tableRows(c);
+      const text = [h, ...rows].map(r => r.join("\t")).join("\n");
+      try { await navigator.clipboard.writeText(text); toast("표를 복사했어요. 엑셀에 붙여넣으세요."); }
+      catch { S.sheet = { type: "copy", text }; render(); const b = $("#copybox"); if (b) { b.focus(); b.select(); } }
+      break;
+    }
+  }
+});
+
+function saveClass() {
+  const s = S.sheet;
+  const grade = +($("#f-grade") ? $("#f-grade").value : s.grade);
+  const num = +($("#f-num") ? $("#f-num").value : s.num);
+  const text = $("#f-text") ? $("#f-text").value : s.text;
+  const list = parseRoster(text);
+  if (!list.length) { toast("명렬표에서 학생 이름을 찾지 못했어요."); return; }
+  const name = `${grade}학년 ${num}반`;
+  const dup = Object.values(S.classes).find(k => k.name === name && k.id !== s.id);
+  if (dup) { toast(`${name}은(는) 이미 있어요. 그 반의 명렬표를 수정하세요.`); return; }
+  if (s.id && S.classes[s.id]) {
+    const c = S.classes[s.id];
+    const old = c.students || [];
+    const students = list.map(x => {
+      const m = old.find(o => o.no === x.no && o.name === x.name) || old.find(o => o.name === x.name);
+      return { id: m ? m.id : rid(), no: x.no, name: x.name, sex: x.sex || (m && m.sex) || null };
+    });
+    const keep = new Set(students.map(x => x.id));
+    for (const k of Object.keys(c.scores || {})) if (!keep.has(k)) delete c.scores[k];
+    Object.assign(c, { students, num, name, updated: Date.now() });
+    persist(c.id); toast("명렬표를 저장했어요.");
+  } else {
+    const id = "c" + rid();
+    S.classes[id] = { id, grade, num, name, students: list.map(x => ({ id: rid(), no: x.no, name: x.name, sex: x.sex || null })), scores: {}, created: Date.now(), updated: Date.now() };
+    S.ui.cls = id; saveUI(); persist(id); toast(`${name}을(를) 만들었어요.`);
+  }
+  S.sheet = null; render();
+}
+
+function makeSample() {
+  const names = ["예시학생가", "예시학생나", "예시학생다", "예시학생라", "예시학생마", "예시학생바"];
+  const id = "c" + rid();
+  const c = { id, grade: 1, num: 0, name: "예시 1학년", students: names.map((n, i) => ({ id: rid(), no: i + 1, name: n, sex: i % 2 ? "여" : "남" })), scores: {}, created: Date.now(), sample: true };
+  const ev = EVALS[1][0];
+  const demo = [[9, 27.4, 76, 6], [8, 30.2, 70, 4], [10, 33.9, 64, 6], [6, null, null, null]];
+  demo.forEach((d, i) => {
+    const sid = c.students[i].id;
+    c.scores[sid] = { [ev.id]: { items: {} } };
+    const it = c.scores[sid][ev.id].items;
+    if (d[0] != null) it.und = { raw: d[0] };
+    if (d[1] != null) it.zero = { raw: d[1] };
+    if (d[2] != null) it.rec = { raw: d[2] };
+    if (d[3] != null) it.att = { pts: d[3] };
+  });
+  [[1, 1, 0, 1, 1, 1], [1, 0, 1, null, null, null]].forEach((marks, i) => {
+    c.scores[c.students[i].id][EVALS[1][1].id] = { items: { fore: { marks } } };
+  });
+  S.classes[id] = c; S.ui.cls = id; saveUI(); persist(id);
+  toast("예시 반을 만들었어요. 반 관리에서 지울 수 있어요."); render();
+}
+
+// 구글 시트 모드: 다른 기기에서 입력한 내용을 앱으로 돌아올 때 다시 불러옴
+document.addEventListener("visibilitychange", async () => {
+  if (S.mode !== "sheet" || document.hidden || S.dirty.size || S.saving || S.sheet) return;
+  try { await sheetLoad(); render(); } catch {}
+});
+
+render();
+initStore();
+})();
+</script>
+
+</body>
+</html>

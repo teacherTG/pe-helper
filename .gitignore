@@ -1,0 +1,7 @@
+# 비밀 키나 학생 데이터가 들어간 파일은 올리지 않음
+*.key
+api-key*
+backup*.json
+*백업*.json
+.DS_Store
+Thumbs.db
