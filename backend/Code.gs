@@ -82,6 +82,16 @@ function aiJson_(prompt) {
   return JSON.parse(text.slice(i, j + 1));
 }
 
+/**
+ * 처음 한 번만: 편집기 위쪽 함수 목록에서 "AI권한승인"을 고르고 [실행]을 누르면
+ * 외부 사이트(Claude API) 접속 권한 승인 창이 뜹니다. 허용하면 끝.
+ */
+function AI권한승인() {
+  const ok = !!PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  UrlFetchApp.fetch('https://api.anthropic.com/v1/models', { muteHttpExceptions: true });
+  Logger.log(ok ? '권한 승인 완료. ANTHROPIC_API_KEY도 설정돼 있어요.' : '권한 승인 완료. 이제 스크립트 속성에 ANTHROPIC_API_KEY를 넣어 주세요.');
+}
+
 function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
 }
