@@ -1284,13 +1284,10 @@ function memoParts(memo) {
     .map(x => ({ t: /[.!?]$/.test(x) ? x : x + ".", pri: 0 }));
 }
 // 메모는 마무리 문장 앞에 넣고, 1,000Byte를 넘으면 우선순위가 낮은 문장부터 뺌 (메모는 빼지 않음)
-// AI가 메모를 바꾼 문장이 지금 메모와 같은 메모에서 나왔으면 그 문장을, 아니면 메모 원문을 씀
-const memoReady = (memo, memoAI) => !!(memoAI && memoAI.text && memoAI.src === String(memo || "").trim());
-function assemble(parts, memo, memoAI) {
+function assemble(parts, memo) {
   const list = (parts || []).filter(x => !x.close);
   const close = (parts || []).filter(x => x.close);
-  const mp = memoReady(memo, memoAI) ? sentences(memoAI.text).map(t => ({ t, pri: 0 })) : memoParts(memo);
-  const all = list.concat(mp, close);
+  const all = list.concat(memoParts(memo), close);
   const join = () => all.map(x => x.t).join(" ");
   let text = join();
   while (neisBytes(text) > RM_BYTES) {
@@ -1321,7 +1318,7 @@ function ensureRemarks(c) {
     const sig = sigOf(c, st);
     if (rm.parts && rm.sig === sig) continue;
     const parts = genParts(c, st, rng((Math.random() * 4294967296) >>> 0), usedMap(c, st.id), null);
-    c.remarks[st.id] = { auto: true, sig, parts, memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+    c.remarks[st.id] = { auto: true, sig, parts, memo: rm.memo || "" };
     changed = true;
   }
   return changed;
@@ -1331,7 +1328,7 @@ function regenRemark(c, st) {
   const rm = c.remarks[st.id] || {};
   const avoid = new Set(isEdited(rm) ? sentences(rm.text) : (rm.parts || []).map(x => x.t));
   const parts = genParts(c, st, rng((Math.random() * 4294967296) >>> 0), usedMap(c, st.id), avoid);
-  c.remarks[st.id] = { auto: true, sig: sigOf(c, st), parts, memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+  c.remarks[st.id] = { auto: true, sig: sigOf(c, st), parts, memo: rm.memo || "" };
 }
 // 반 전체 다시 만들기: 대상 학생의 기존 문장을 비우고, 이전 문장은 피하면서 한 명씩 새로 만듦
 function regenAll(c, includeEdited) {
@@ -1341,7 +1338,7 @@ function regenAll(c, includeEdited) {
   for (const st of targets) {
     const rm = c.remarks[st.id] || {};
     avoid[st.id] = new Set(isEdited(rm) ? sentences(rm.text) : (rm.parts || []).map(x => x.t));
-    c.remarks[st.id] = { auto: true, sig: null, parts: [], memo: rm.memo || "", ...(rm.memoAI ? { memoAI: rm.memoAI } : {}) };
+    c.remarks[st.id] = { auto: true, sig: null, parts: [], memo: rm.memo || "" };
   }
   for (const st of targets) {
     const r = c.remarks[st.id];
@@ -1375,108 +1372,14 @@ function regenAllSheet() {
 }
 function remarkOf(c, st) {
   const rm = (c.remarks || {})[st.id] || {};
-  const base = { memo: rm.memo || "", ready: memoReady(rm.memo, rm.memoAI) };
+  const base = { memo: rm.memo || "" };
   if (isEdited(rm)) return { ...base, text: rm.text || "", edited: true, stale: !!rm.sig && rm.sig !== sigOf(c, st) };
-  return { ...base, text: assemble(rm.parts, rm.memo, rm.memoAI), edited: false };
+  return { ...base, text: assemble(rm.parts, rm.memo), edited: false };
 }
 
-/* 관찰 메모 → AI 세특 문장 (학생 이름은 보내지 않음) */
-let samplePromise = null;
-const getSample = () => samplePromise || (samplePromise = (window.claude && typeof window.claude.use === "function") ? window.claude.use("sample").catch(() => null) : Promise.resolve(null));
-const AI = { busy: new Set(), err: {}, off: false };
-const LV_WORD = { 3: "상", 2: "중", 1: "하" };
-function memoPrompt(c, st, memo, others) {
-  const ctx = evalsOf(c).map(ev => {
-    const en = entryOf(c, st.id, ev);
-    if (en && en.absent) return `- ${ev.tag} ${ev.name}: 미응시`;
-    const items = ev.items.map(it => { const p = itemPts(it, en, st); return p == null ? null : `${it.name} ${LV_WORD[lvOf(p, it.max)]}`; }).filter(Boolean);
-    return items.length ? `- ${ev.tag} ${ev.name}: ${items.join(", ")}` : null;
-  }).filter(Boolean).join("\n") || "- 아직 점수 없음";
-  return `당신은 중학교 체육 교사의 학교생활기록부 '교과 세부능력 및 특기사항' 작성을 돕습니다.
-교사의 관찰 메모를 세특에 넣을 문장으로 바꿔 주세요.
-
-[학생 정보] ${c.grade}학년, 과목 체육
-[이번 학기 수행평가 항목별 수준]
-${ctx}
-
-[교사 관찰 메모]
-${memo}
-
-[이미 세특에 들어간 다른 문장 — 같은 내용이나 표현을 반복하지 말 것]
-${others.map(t => "- " + t).join("\n") || "- 없음"}
-
-[작성 규칙 — 2026 학교생활기록부 기재요령]
-1. 메모에 적힌 사실만 사용하고, 메모에 없는 행동이나 결과를 지어내지 말 것.
-2. 1~2문장, 합계 한글 150자 이내.
-3. 문장은 명사형 어미로 끝낼 것 (예: ~함. ~임. ~보임. ~돋보임.).
-4. 체육 교과의 성취수준 특성, 실기능력, 교과적성, 학습활동 참여도 및 태도가 드러나도록 구체적으로 쓸 것.
-5. 학생 이름, 다른 학생 이름, 점수, 등수를 쓰지 말 것.
-6. 교내외 대회와 수상, 자격증, 인증시험, 공인어학시험, 특정 기관명이나 상호명, 강사명, 부모의 직업이나 지위, 해외 활동, 장학금은 메모에 있더라도 쓰지 말 것.
-7. 따옴표, 괄호, 번호, 기호 같은 특수문자를 쓰지 말 것.
-
-다음 JSON 형식으로만 답하세요: {"sentences": ["문장1", "문장2"]}`;
-}
-const cleanSentence = s => {
-  s = String(s || "").replace(/[“”"'‘’「」『』()\[\]{}<>※★☆•·\-–—#*~^|\\/]/g, " ").replace(/\s+/g, " ").trim();
-  if (!s) return "";
-  return /[.!?]$/.test(s) ? s.replace(/[!?]$/, ".") : s + ".";
-};
-const AI_MSG = {
-  rate_limited: "AI 사용이 잠시 몰렸어요. 조금 뒤에 다시 눌러 주세요.",
-  session_expired: "로그인이 만료됐어요. 다시 로그인한 뒤 눌러 주세요.",
-  refused: "이 메모로는 문장을 만들 수 없었어요. 메모를 조금 바꿔 주세요.",
-  invalid_json: "AI 답을 읽지 못했어요. 다시 눌러 주세요.",
-  empty_completion: "AI 답이 비어 있었어요. 다시 눌러 주세요.",
-};
-async function convertMemo(cid, sid, fresh) {
-  const c0 = S.classes[cid]; if (!c0) return;
-  const st = (c0.students || []).find(s => s.id === sid); if (!st) return;
-  const rm0 = (c0.remarks || {})[sid] || {};
-  const memo = String(rm0.memo || "").trim(); if (!memo || AI.busy.has(sid)) return;
-  // claude.ai 안: 아티팩트의 Claude 기능 / GitHub Pages: 구글 시트 백엔드(Apps Script)가 Claude API를 대신 부름
-  let sample = null;
-  if (inClaude()) { sample = await getSample(); if (!sample) { AI.off = true; render(); return; } }
-  else if (S.mode !== "sheet") { AI.off = true; AI.offMsg = "구글 시트를 연결하면 AI 문장 만들기를 쓸 수 있어요. 지금은 메모 원문이 들어가요."; render(); return; }
-  AI.busy.add(sid); delete AI.err[sid]; render();
-  try {
-    const others = isEdited(rm0) ? [] : (rm0.parts || []).map(x => x.t);
-    const prompt = memoPrompt(c0, st, memo, others);
-    let out;
-    if (sample) out = await sample.json(prompt, { modelTier: "default", effort: "low", cache: fresh ? false : true });
-    else {
-      try { out = await apiCall("ai", { prompt }); }
-      catch (err) {
-        const m = String(err && err.message || "");
-        if (/ai_not_configured/.test(m)) throw { code: "ai_not_configured" };
-        throw { code: "server", message: m };
-      }
-    }
-    const arr = (Array.isArray(out && out.sentences) ? out.sentences : Array.isArray(out) ? out : []).map(cleanSentence).filter(Boolean).slice(0, 3);
-    if (!arr.length) throw { code: "empty_completion" };
-    const c = S.classes[cid]; if (!c) return;
-    c.remarks = c.remarks || {};
-    const cur = c.remarks[sid] = c.remarks[sid] || {};
-    if (String(cur.memo || "").trim() !== memo) return;   // 그사이 메모가 바뀜
-    cur.memoAI = { src: memo, text: arr.join(" ") };
-    persist(cid);
-  } catch (e) {
-    const code = e && e.code;
-    if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) AI.off = true;
-    else if (code === "ai_not_configured") { AI.off = true; AI.offMsg = "구글 시트 백엔드에 AI 키(ANTHROPIC_API_KEY)가 아직 설정되지 않아 메모 원문이 들어가요."; }
-    else if (code === "server") AI.err[sid] = "AI 문장을 만들지 못했어요: " + (e.message || "서버 오류") ;
-    else if (code !== "cancelled") AI.err[sid] = AI_MSG[code] || "AI 연결에 문제가 있었어요. 다시 눌러 주세요.";
-  } finally {
-    AI.busy.delete(sid); render();
-  }
-}
 function memoStatus(st, r) {
-  if (!r.memo.trim()) return `<span class="hint">관찰한 내용을 짧게 적으면 AI가 기재요령에 맞는 세특 문장으로 바꿔 넣어요. 예: 서브 토스 요령을 친구에게 알려 줌</span>`;
-  if (AI.busy.has(st.id)) return `<span class="hint ai busy">AI가 메모를 세특 문장으로 바꾸고 있어요…</span>`;
-  const note = r.edited ? " 직접 고친 문장에는 자동으로 들어가지 않으니 ‘다시 만들기’를 누르세요." : "";
-  if (AI.off) return `<span class="hint">${esc(AI.offMsg || "이 화면에서는 AI를 쓸 수 없어 메모 원문이 들어가요.")}${note}</span>`;
-  const err = AI.err[st.id] ? `<span class="hint err">${esc(AI.err[st.id])}</span>` : "";
-  if (r.ready) return `${err}<span class="hint ai">메모를 세특 문장으로 바꿔 넣었어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI로 다시 쓰기</button>`;
-  return `${err}<span class="hint">아직 메모 원문 상태예요. 메모 칸을 벗어나면 AI가 바꿔 넣어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI 문장 만들기</button>`;
+  if (r.edited && r.memo.trim()) return `<span class="hint">직접 고친 문장에는 메모가 자동으로 들어가지 않아요. ‘다시 만들기’를 누르면 메모를 넣어 새로 만들어요.</span>`;
+  return `<span class="hint">메모는 세특 끝맺음 문장 앞에 그대로 들어가요. ‘~함’, ‘~보임’처럼 명사형으로 적어 주세요.</span>`;
 }
 function countText(text) {
   const b = neisBytes(text);
@@ -1805,7 +1708,7 @@ document.addEventListener("input", e => {
     const rm = c.remarks[sid] = { ...(c.remarks[sid] || {}), memo: el.value };
     persist(c.id);
     if (!isEdited(rm)) {
-      const text = assemble(rm.parts, rm.memo, rm.memoAI);
+      const text = assemble(rm.parts, rm.memo);
       const ta = document.getElementById("rm-" + sid); if (ta) ta.value = text;
       const cnt = document.getElementById("rc-" + sid); if (cnt) { const k = countText(text); cnt.textContent = k.html; cnt.className = k.cls; }
     }
@@ -1817,13 +1720,6 @@ document.addEventListener("input", e => {
 document.addEventListener("change", async e => {
   const el = e.target;
   if (el.classList && el.classList.contains("raw")) { if (commitInput(el) && el.id.startsWith("d-")) render(); else if (!el.id.startsWith("d-")) refreshProgress(); return; }
-  if (el.id && el.id.startsWith("mm-")) {
-    const c = cls(); if (!c) return;
-    const rm = (c.remarks || {})[el.dataset.sid] || {};
-    if (String(rm.memo || "").trim() && !memoReady(rm.memo, rm.memoAI)) convertMemo(c.id, el.dataset.sid, false);
-    else render();
-    return;
-  }
   if (el.id && el.id.startsWith("tk-")) {
     const t = (S.tasks.items || []).find(x => x.id === el.dataset.tid); if (!t) return;
     t.done = el.checked; t.doneAt = el.checked ? Date.now() : null;
@@ -1915,7 +1811,6 @@ document.addEventListener("click", async e => {
       regenRemark(c, st);
       persist(c.id); render();
       toast(wasEdited ? "직접 고친 문장 대신 새 문장을 만들었어요." : "다른 문장으로 다시 만들었어요.");
-      if (String(c.remarks[st.id].memo || "").trim() && !AI.off) convertMemo(c.id, st.id, true);
       break;
     }
     case "conn": if (!inClaude()) { S.sheet = { type: "conn" }; render(); } break;
@@ -1926,7 +1821,7 @@ document.addEventListener("click", async e => {
       try {
         await apiCall("ping", {}, cfg);
         ls.set(LS_API, cfg);
-        S.mode = "sheet"; S.saveErr = null; AI.off = false; AI.offMsg = null;
+        S.mode = "sheet"; S.saveErr = null;
         await sheetLoad();
         S.sheet = null; render(); toast("구글 시트에 연결했어요.");
       } catch (e) { S.sheet = { type: "conn", msg: e.message, ok: false }; render(); }
@@ -1942,12 +1837,6 @@ document.addEventListener("click", async e => {
       const n = regenAll(c, t.dataset.all === "1");
       persist(c.id); S.sheet = null; render();
       toast(`${n}명의 세특을 새로 만들었어요.`);
-      break;
-    }
-    case "memo-ai": {
-      const ta = document.getElementById("mm-" + st.id);
-      if (ta) { c.remarks = c.remarks || {}; c.remarks[st.id] = { ...(c.remarks[st.id] || {}), memo: ta.value }; persist(c.id); }
-      convertMemo(c.id, st.id, true);
       break;
     }
     case "rm-copy": {
