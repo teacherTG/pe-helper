@@ -36,11 +36,50 @@ function doPost(e) {
       case 'loadAll': return json_({ ok: true, data: loadAll_() });
       case 'saveDoc': saveDoc_(String(p.id), String(p.json || ''), p.view); return json_({ ok: true });
       case 'deleteDoc': deleteDoc_(String(p.id), p.viewName); return json_({ ok: true });
+      case 'ai': return json_({ ok: true, data: aiJson_(String(p.prompt || '')) });
       default: return json_({ ok: false, error: 'unknown action' });
     }
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+/**
+ * 관찰 메모 → 세특 문장 (Claude API)
+ * API 키는 코드에 쓰지 않고 [프로젝트 설정] → [스크립트 속성]에 ANTHROPIC_API_KEY 로 넣습니다.
+ * 모델을 바꾸려면 스크립트 속성 ANTHROPIC_MODEL 을 넣으세요 (기본 claude-opus-5-5).
+ */
+function aiJson_(prompt) {
+  const props = PropertiesService.getScriptProperties();
+  const apiKey = props.getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) throw new Error('ai_not_configured');
+  if (!prompt || prompt.length > 12000) throw new Error('bad prompt');
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'server-side-fallback-2026-07-01',   // 안전 분류기가 거절하면 다른 모델로 자동 재시도
+    },
+    payload: JSON.stringify({
+      model: props.getProperty('ANTHROPIC_MODEL') || 'claude-opus-5-5',
+      max_tokens: 2000,
+      output_config: { effort: 'low' },                         // 짧은 문장 변환이라 생각은 짧게
+      fallbacks: 'default',
+      messages: [{ role: 'user', content: prompt }],
+    }),
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  let body = {};
+  try { body = JSON.parse(res.getContentText()); } catch (e) {}
+  if (code !== 200) throw new Error('Claude API ' + code + ': ' + ((body.error && body.error.message) || '응답 오류'));
+  if (body.stop_reason === 'refusal') throw new Error('AI가 이 메모로는 문장을 만들지 않았어요. 메모를 바꿔 주세요.');
+  const text = (body.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  const i = text.indexOf('{'), j = text.lastIndexOf('}');
+  if (i < 0 || j < i) throw new Error('AI 답을 읽지 못했어요.');
+  return JSON.parse(text.slice(i, j + 1));
 }
 
 function json_(o) {

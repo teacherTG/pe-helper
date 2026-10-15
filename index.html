@@ -1433,12 +1433,24 @@ async function convertMemo(cid, sid, fresh) {
   const st = (c0.students || []).find(s => s.id === sid); if (!st) return;
   const rm0 = (c0.remarks || {})[sid] || {};
   const memo = String(rm0.memo || "").trim(); if (!memo || AI.busy.has(sid)) return;
-  const sample = await getSample();
-  if (!sample) { AI.off = true; render(); return; }
+  // claude.ai 안: 아티팩트의 Claude 기능 / GitHub Pages: 구글 시트 백엔드(Apps Script)가 Claude API를 대신 부름
+  let sample = null;
+  if (inClaude()) { sample = await getSample(); if (!sample) { AI.off = true; render(); return; } }
+  else if (S.mode !== "sheet") { AI.off = true; AI.offMsg = "구글 시트를 연결하면 AI 문장 만들기를 쓸 수 있어요. 지금은 메모 원문이 들어가요."; render(); return; }
   AI.busy.add(sid); delete AI.err[sid]; render();
   try {
     const others = isEdited(rm0) ? [] : (rm0.parts || []).map(x => x.t);
-    const out = await sample.json(memoPrompt(c0, st, memo, others), { modelTier: "default", effort: "low", cache: fresh ? false : true });
+    const prompt = memoPrompt(c0, st, memo, others);
+    let out;
+    if (sample) out = await sample.json(prompt, { modelTier: "default", effort: "low", cache: fresh ? false : true });
+    else {
+      try { out = await apiCall("ai", { prompt }); }
+      catch (err) {
+        const m = String(err && err.message || "");
+        if (/ai_not_configured/.test(m)) throw { code: "ai_not_configured" };
+        throw { code: "server", message: m };
+      }
+    }
     const arr = (Array.isArray(out && out.sentences) ? out.sentences : Array.isArray(out) ? out : []).map(cleanSentence).filter(Boolean).slice(0, 3);
     if (!arr.length) throw { code: "empty_completion" };
     const c = S.classes[cid]; if (!c) return;
@@ -1450,6 +1462,8 @@ async function convertMemo(cid, sid, fresh) {
   } catch (e) {
     const code = e && e.code;
     if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) AI.off = true;
+    else if (code === "ai_not_configured") { AI.off = true; AI.offMsg = "구글 시트 백엔드에 AI 키(ANTHROPIC_API_KEY)가 아직 설정되지 않아 메모 원문이 들어가요."; }
+    else if (code === "server") AI.err[sid] = "AI 문장을 만들지 못했어요: " + (e.message || "서버 오류") ;
     else if (code !== "cancelled") AI.err[sid] = AI_MSG[code] || "AI 연결에 문제가 있었어요. 다시 눌러 주세요.";
   } finally {
     AI.busy.delete(sid); render();
@@ -1459,7 +1473,7 @@ function memoStatus(st, r) {
   if (!r.memo.trim()) return `<span class="hint">관찰한 내용을 짧게 적으면 AI가 기재요령에 맞는 세특 문장으로 바꿔 넣어요. 예: 서브 토스 요령을 친구에게 알려 줌</span>`;
   if (AI.busy.has(st.id)) return `<span class="hint ai busy">AI가 메모를 세특 문장으로 바꾸고 있어요…</span>`;
   const note = r.edited ? " 직접 고친 문장에는 자동으로 들어가지 않으니 ‘다시 만들기’를 누르세요." : "";
-  if (AI.off) return `<span class="hint">이 화면에서는 AI를 쓸 수 없어 메모 원문이 들어가요.${note}</span>`;
+  if (AI.off) return `<span class="hint">${esc(AI.offMsg || "이 화면에서는 AI를 쓸 수 없어 메모 원문이 들어가요.")}${note}</span>`;
   const err = AI.err[st.id] ? `<span class="hint err">${esc(AI.err[st.id])}</span>` : "";
   if (r.ready) return `${err}<span class="hint ai">메모를 세특 문장으로 바꿔 넣었어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI로 다시 쓰기</button>`;
   return `${err}<span class="hint">아직 메모 원문 상태예요. 메모 칸을 벗어나면 AI가 바꿔 넣어요.${note}</span><button class="mini" data-act="memo-ai" data-sid="${st.id}">AI 문장 만들기</button>`;
@@ -1912,7 +1926,7 @@ document.addEventListener("click", async e => {
       try {
         await apiCall("ping", {}, cfg);
         ls.set(LS_API, cfg);
-        S.mode = "sheet"; S.saveErr = null;
+        S.mode = "sheet"; S.saveErr = null; AI.off = false; AI.offMsg = null;
         await sheetLoad();
         S.sheet = null; render(); toast("구글 시트에 연결했어요.");
       } catch (e) { S.sheet = { type: "conn", msg: e.message, ok: false }; render(); }
