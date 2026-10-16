@@ -709,6 +709,7 @@ function itemView(c, ev, item) {
     </section>
     <div class="progress"><span>입력 <b class="num">${done}</b> / <span class="num">${studs.length}</span>명</span><div class="bar"><i style="width:${pct}%"></i></div>
       <span>${item.trials ? "○/× 버튼은 다음 칸부터 채워요 · 칸을 누르면 ○→×→빈칸" : item.kind === "num" ? "입력 후 Enter → 다음 학생" : "점수를 누르면 저장"}</span></div>
+    <div class="actions"><button class="btn" data-act="bulk-open" data-item="${item.id}" ${studs.length ? "" : "disabled"}>엑셀 결과 붙여넣기</button></div>
     <div class="list">${rows || `<div class="row"><span></span><span class="muted">학생이 없어요. 반 관리에서 명렬표를 넣어 주세요.</span></div>`}</div>`;
 }
 
@@ -782,6 +783,7 @@ function sumView(c, ev) {
       <th>학기<br><span class="num">100</span></th><th>성취도</th></tr></thead>
       <tbody>${body || `<tr><td colspan="9" class="muted">학생이 없어요.</td></tr>`}</tbody></table></div>
     <div class="actions">
+      <button class="btn" data-act="bulk-open">엑셀 결과 붙여넣기</button>
       <button class="btn" data-act="export-csv">이 반 CSV 저장</button>
       <button class="btn" data-act="copy-tsv">표 복사 (엑셀 붙여넣기)</button>
     </div>
@@ -1438,8 +1440,80 @@ function renderLayer() {
   else if (s.type === "task") html = taskSheet(s);
   else if (s.type === "regen-all") html = regenAllSheet();
   else if (s.type === "conn") html = connSheet(s);
+  else if (s.type === "bulk") html = bulkSheet(s);
   L.innerHTML = `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
 }
+
+// 엑셀의 행/열 위치를 유지해 검증한 뒤 한 번에 저장합니다.
+function planBulk(c, ev, sid, itemId, text) {
+  const students = c.students || [];
+  const start = students.findIndex(st => st.id === sid);
+  const col = ev.items.findIndex(it => it.id === itemId);
+  if (start < 0 || col < 0) throw new Error("시작 학생과 항목을 선택해 주세요.");
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  if (!lines.some(line => line.trim())) throw new Error("엑셀에서 결과값을 복사해 붙여넣어 주세요.");
+  if (lines.length > students.length - start) throw new Error("붙여넣은 행이 남은 학생 수보다 많아요.");
+  const changes = [], rows = [];
+  lines.forEach((line, ri) => {
+    const cells = line.split("\t");
+    if (cells.length > ev.items.length - col) throw new Error(`${ri + 1}행: 평가 항목 수보다 열이 많아요.`);
+    const st = students[start + ri], en = entryOf(c, st.id, ev);
+    cells.forEach((cell, ci) => {
+      const it = ev.items[col + ci], value = cell.trim();
+      if (!value) return;
+      if (en && en.absent) { rows.push({ st, it, value, skip: true }); return; }
+      const old = en && en.items && en.items[it.id];
+      let patch;
+      if (it.kind === "level") {
+        const p = /^\d+(?:\.\d+)?$/.test(value) ? Number(value) : NaN;
+        if (!it.levels.some(([pt]) => pt === p)) throw new Error(`${ri + 1}행 ${it.short}: ${it.levels.map(([pt]) => pt).join(", ")}점 중 입력하세요.`);
+        patch = { pts: p };
+      } else {
+        const parsed = parseRaw(it, value);
+        if (parsed.err) throw new Error(`${ri + 1}행 ${it.short}: ${parsed.err}`);
+        patch = { raw: parsed.v };
+        if (it.variants) patch.v = varOf(it, old).id;
+      }
+      changes.push({ sid: st.id, itemId: it.id, patch });
+      rows.push({ st, it, value, skip: false });
+    });
+  });
+  if (!changes.length) throw new Error("적용할 값이 없어요. 빈칸과 미응시 학생은 건너뜁니다.");
+  return { changes, rows };
+}
+function bulkSheet(s) {
+  const c = cls(), ev = curEval(c);
+  const students = c.students || [];
+  const preview = s.plan ? `<p><b>${s.plan.changes.length}개 값</b>을 적용합니다. 기존 값은 덮어씁니다.</p>
+    <div class="tblwrap"><table><thead><tr><th>번호</th><th>이름</th><th>항목</th><th>입력값</th></tr></thead><tbody>${s.plan.rows.map(r => `<tr><td>${esc(r.st.no)}</td><td>${esc(r.st.name)}</td><td>${esc(r.it.short)}</td><td>${esc(r.value)}${r.skip ? " (미응시 · 건너뜀)" : ""}</td></tr>`).join("")}</tbody></table></div>` : "";
+  return `<div class="sh-head"><h3>엑셀 결과 붙여넣기</h3><button class="iconbtn" data-act="close">닫기</button></div>
+    <div class="sh-body"><p>${esc(c.name)} · ${esc(ev.tag)}</p>
+    <p class="hint">엑셀에서 제목·번호·이름을 제외한 결과값만 복사하세요. 행은 아래 학생 순서, 열은 선택한 항목부터 평가 항목 순서로 들어갑니다. 빈칸과 미응시는 기존 기록을 유지해요.</p>
+    <div class="field"><label for="bulk-student">시작 학생</label><select id="bulk-student" class="txt">${students.map(st => `<option value="${esc(st.id)}" ${s.sid === st.id ? "selected" : ""}>${esc(st.no)}번 ${esc(st.name)}</option>`).join("")}</select></div>
+    <div class="field"><label for="bulk-item">시작 항목</label><select id="bulk-item" class="txt">${ev.items.map(it => `<option value="${it.id}" ${s.itemId === it.id ? "selected" : ""}>${esc(it.short)} (${it.kind === "level" ? "배점" : it.unit})</option>`).join("")}</select></div>
+    <p class="hint">열 순서: ${ev.items.map(it => esc(it.short)).join(" → ")}<br>횟수 항목은 성공 횟수, 시간은 초 또는 분:초, 태도는 배점을 입력하세요. 도구는 학생별 현재 설정을 사용합니다.</p>
+    <div class="field"><label for="bulk-text">복사한 결과값</label><textarea id="bulk-text" placeholder="엑셀에서 복사한 값을 여기에 붙여넣으세요">${esc(s.text || "")}</textarea></div>
+    <div id="bulk-preview" aria-live="polite">${preview}</div></div>
+    <div class="sh-foot"><button class="btn" data-act="bulk-preview">미리보기</button><span class="sp"></span><button class="btn primary" id="bulk-apply" data-act="bulk-apply" ${s.plan ? "" : "disabled"}>확인 후 적용</button></div>`;
+}
+function invalidateBulk() {
+  if (!S.sheet || S.sheet.type !== "bulk") return;
+  S.sheet.plan = null;
+  $("#bulk-preview").innerHTML = "";
+  $("#bulk-apply").disabled = true;
+}
+document.addEventListener("input", e => { if (e.target.id === "bulk-text") invalidateBulk(); });
+document.addEventListener("change", e => { if (["bulk-student", "bulk-item"].includes(e.target.id)) invalidateBulk(); });
+document.addEventListener("paste", e => {
+  const el = e.target;
+  if (!el.matches("input.raw[id^='in-']")) return;
+  const text = e.clipboardData && e.clipboardData.getData("text/plain");
+  if (!text || !/[\t\r\n]/.test(text)) return;
+  e.preventDefault();
+  S.sheet = { type: "bulk", sid: el.dataset.sid, itemId: el.dataset.item, text };
+  renderLayer();
+});
 
 function studentSheet(s) {
   const c = cls(); if (!c) return "";
@@ -1784,6 +1858,34 @@ document.addEventListener("click", async e => {
   const st = c && t.dataset.sid ? (c.students || []).find(s => s.id === t.dataset.sid) : null;
   const item = ev && t.dataset.item ? ev.items.find(i => i.id === t.dataset.item) : null;
   switch (act) {
+    case "bulk-open": {
+      if (!c || !(c.students || []).length) { toast("먼저 반 관리에서 학생을 추가해 주세요."); break; }
+      S.sheet = { type: "bulk", sid: c.students[0].id, itemId: t.dataset.item || ev.items[0].id, text: "" };
+      renderLayer(); break;
+    }
+    case "bulk-preview": {
+      const s = S.sheet;
+      s.sid = $("#bulk-student").value; s.itemId = $("#bulk-item").value; s.text = $("#bulk-text").value;
+      try { s.plan = planBulk(c, ev, s.sid, s.itemId, s.text); renderLayer(); }
+      catch (err) { invalidateBulk(); toast(err.message); }
+      break;
+    }
+    case "bulk-apply": {
+      const s = S.sheet;
+      if (!s || !s.plan) break;
+      try {
+        const plan = planBulk(c, ev, s.sid, s.itemId, s.text);
+        c.scores = c.scores || {};
+        for (const change of plan.changes) {
+          const scores = c.scores[change.sid] = c.scores[change.sid] || {};
+          const en = scores[ev.id] = scores[ev.id] || { items: {} };
+          en.items = en.items || {}; en.items[change.itemId] = change.patch;
+        }
+        c.updated = Date.now(); persist(c.id); S.sheet = null; render();
+        toast(`${plan.changes.length}개 결과값을 적용했어요.`);
+      } catch (err) { invalidateBulk(); toast(err.message); }
+      break;
+    }
     case "page": S.ui.page = t.dataset.id; saveUI(); render(); window.scrollTo({ top: 0 }); break;
     case "ttab": S.ui.ttab = t.dataset.id; saveUI(); render(); break;
     case "task-add": {
