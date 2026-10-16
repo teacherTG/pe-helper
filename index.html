@@ -7,7 +7,7 @@
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>체육 수행평가 채점기</title>
+<title>당하중학교 체육 도우미</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
@@ -45,6 +45,10 @@ button{cursor:pointer}
 
 /* control deck */
 .deck{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding-block:12px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.site-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 16px}
+.site-title{margin:0;font-family:var(--f-display);font-size:clamp(24px,4vw,30px);line-height:1.25;color:var(--accent)}
+.site-cheer{margin:0;font-size:14px;line-height:1.6;color:var(--muted);word-break:keep-all}
+.site-cheer span{display:inline-block}
 .topline{display:flex;align-items:center;gap:10px}
 .brand{font-family:var(--f-display);font-size:22px;letter-spacing:.01em;line-height:1;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand small{font-family:var(--f-body);font-size:12px;color:var(--muted);font-weight:500;margin-left:6px}
@@ -632,7 +636,7 @@ function renderDeck() {
   const c = cls();
   const page = S.ui.page || "eval";
   const pages = [["tasks", "업무관리"], ["eval", "수행평가"], ["remarks", "교과세특"]];
-  let h = `<h1 class="sr">체육 업무 도우미</h1><div class="topline"><nav class="nav" aria-label="메뉴">${pages.map(([id, l]) => `<button data-act="page" data-id="${id}" aria-pressed="${page === id}">${l}</button>`).join("")}</nav>${inClaude() ? `<span id="status" class="pill"></span>` : `<button id="status" class="pill" data-act="conn" title="구글 시트 연결 설정"></button>`}</div>`;
+  let h = `<div class="site-heading"><h1 class="site-title">당하중학교 체육 도우미</h1><p class="site-cheer"><span>체육교사 한태건 화이팅.</span> <span>발전하는 교사 한태건 화이팅</span></p></div><div class="topline"><nav class="nav" aria-label="메뉴">${pages.map(([id, l]) => `<button data-act="page" data-id="${id}" aria-pressed="${page === id}">${l}</button>`).join("")}</nav>${inClaude() ? `<span id="status" class="pill"></span>` : `<button id="status" class="pill" data-act="conn" title="구글 시트 연결 설정"></button>`}</div>`;
   if (page === "tasks") { $("#deck").innerHTML = h; return; }
   if (page === "remarks") {
     if (list.length) h += `<div class="scroller" role="toolbar" aria-label="반 선택">` + list.map(k => `<button class="chip" data-act="cls" data-id="${k.id}" aria-pressed="${k.id === S.ui.cls}">${esc(k.name)}</button>`).join("") + `</div>`;
