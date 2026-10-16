@@ -1447,7 +1447,7 @@ function renderLayer() {
 // 엑셀의 행/열 위치를 유지해 검증한 뒤 한 번에 저장합니다.
 function bulkColumns(ev) {
   if (ev.id !== "g2a") return ev.items;
-  return [ev.items[0], { id: "tool", short: "도구", kind: "tool", unit: "배트/라켓" }, ev.items[1], { ...ev.items[2], short: "기능(초)" }];
+  return [{ id: "sex", short: "성별", kind: "sex", unit: "남/여" }, ev.items[0], { id: "tool", short: "도구", kind: "tool", unit: "배트/라켓" }, ev.items[1], { ...ev.items[2], short: "기능(초)" }];
 }
 function planBulk(c, ev, sid, itemId, text) {
   const students = c.students || [];
@@ -1468,6 +1468,13 @@ function planBulk(c, ev, sid, itemId, text) {
       const it = columns[col + ci], value = cell.trim();
       if (!value) return;
       if (en && en.absent) { rows.push({ st, it, value, skip: true }); return; }
+      if (it.kind === "sex") {
+        const sex = { "남": "남", "여": "여", "남자": "남", "여자": "여" }[value];
+        if (!sex) throw new Error(`${ri + 1}행 성별: 남 또는 여를 입력하세요.`);
+        changes.push({ sid: st.id, sex });
+        rows.push({ st, it, value, skip: false });
+        return;
+      }
       const targetId = it.kind === "tool" ? "hit" : it.id;
       const prior = changes.findLast(change => change.sid === st.id && change.itemId === targetId);
       const old = prior ? prior.patch : en && en.items && en.items[targetId];
@@ -1503,7 +1510,7 @@ function bulkSheet(s) {
     <p class="hint">엑셀에서 제목·번호·이름을 제외한 결과값만 복사하세요. 행은 아래 학생 순서, 열은 선택한 항목부터 평가 항목 순서로 들어갑니다. 빈칸과 미응시는 기존 기록을 유지해요.</p>
     <div class="field"><label for="bulk-student">시작 학생</label><select id="bulk-student" class="txt">${students.map(st => `<option value="${esc(st.id)}" ${s.sid === st.id ? "selected" : ""}>${esc(st.no)}번 ${esc(st.name)}</option>`).join("")}</select></div>
     <div class="field"><label for="bulk-item">시작 항목</label><select id="bulk-item" class="txt">${bulkColumns(ev).map(it => `<option value="${it.id}" ${s.itemId === it.id ? "selected" : ""}>${esc(it.short)} (${it.kind === "level" ? "배점" : it.unit})</option>`).join("")}</select></div>
-    <p class="hint">열 순서: ${bulkColumns(ev).map(it => esc(it.short)).join(" → ")}<br>횟수 항목은 성공 횟수, 시간은 초 또는 분:초, 태도는 배점을 입력하세요. 도구 열은 배트 또는 라켓을 입력하세요. 도구가 빈칸이면 학생별 현재 설정을 유지합니다.</p>
+    <p class="hint">열 순서: ${bulkColumns(ev).map(it => esc(it.short)).join(" → ")}<br>횟수 항목은 성공 횟수, 시간은 초 또는 분:초, 태도는 배점을 입력하세요. 성별은 남/여, 도구 열은 배트 또는 라켓을 입력하세요. 도구가 빈칸이면 학생별 현재 설정을 유지합니다.</p>
     <div class="field"><label for="bulk-text">복사한 결과값</label><textarea id="bulk-text" placeholder="엑셀에서 복사한 값을 여기에 붙여넣으세요">${esc(s.text || "")}</textarea></div>
     <div id="bulk-preview" aria-live="polite">${preview}</div></div>
     <div class="sh-foot"><button class="btn" data-act="bulk-preview">미리보기</button><span class="sp"></span><button class="btn primary" id="bulk-apply" data-act="bulk-apply" ${s.plan ? "" : "disabled"}>확인 후 적용</button></div>`;
@@ -1871,7 +1878,7 @@ document.addEventListener("click", async e => {
   switch (act) {
     case "bulk-open": {
       if (!c || !(c.students || []).length) { toast("먼저 반 관리에서 학생을 추가해 주세요."); break; }
-      S.sheet = { type: "bulk", sid: c.students[0].id, itemId: t.dataset.item || ev.items[0].id, text: "" };
+      S.sheet = { type: "bulk", sid: c.students[0].id, itemId: ev.id === "g2a" ? "sex" : t.dataset.item || ev.items[0].id, text: "" };
       renderLayer(); break;
     }
     case "bulk-preview": {
@@ -1888,6 +1895,10 @@ document.addEventListener("click", async e => {
         const plan = planBulk(c, ev, s.sid, s.itemId, s.text);
         c.scores = c.scores || {};
         for (const change of plan.changes) {
+          if (change.sex) {
+            c.students.find(st => st.id === change.sid).sex = change.sex;
+            continue;
+          }
           const scores = c.scores[change.sid] = c.scores[change.sid] || {};
           const en = scores[ev.id] = scores[ev.id] || { items: {} };
           en.items = en.items || {}; en.items[change.itemId] = change.patch;
